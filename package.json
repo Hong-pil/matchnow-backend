@@ -47,10 +47,9 @@
     "// 헬스체크 및 모니터링": "// ========================",
     "health:check": "curl -f http://localhost:4011/health || exit 1",
     "health:api": "curl -f http://localhost:4011/api || exit 1",
-    
     "dev:mac": "cp .env.development .env && pnpm run start:dev",
     "dev:ubuntu": "cp .env.production .env && pnpm run start:dev",
-    "build:ubuntu": "cp .env.production .env && pnpm run build", 
+    "build:ubuntu": "cp .env.production .env && pnpm run build",
     "start:ubuntu": "cp .env.production .env && pnpm run start:prod"
   },
   "dependencies": {
@@ -84,6 +83,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "path-to-regexp": "6.2.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.25"

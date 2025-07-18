@@ -1,12 +1,11 @@
-// src/app.module.ts (업데이트)
+// src/app.module.ts (ServeStaticModule 완전 제거)
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { ClsModule } from 'nestjs-cls';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+// ServeStaticModule 제거
 
 import { ClsStoreKey } from '@/common/constants/cls.constant';
 import { getTypeOrmConfig } from '@/config/database.config';
@@ -23,9 +22,8 @@ import { PlayersModule } from './modules/players/players.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { GamesModule } from './modules/games/games.module';
 import { BetsApiModule } from './modules/betsapi/betsapi.module';
-import { FootballMatchesModule } from './modules/football-matches/football-matches.module'; // 새로 추가
+import { FootballMatchesModule } from './modules/football-matches/football-matches.module';
 import { AuthModule } from './auth/auth.module';
-import { resolve } from 'path';
 
 @Module({
   imports: [
@@ -34,17 +32,7 @@ import { resolve } from 'path';
       isGlobal: true,
     }),
     
-    // // 정적 파일 서빙 모듈 추가
-    // ServeStaticModule.forRoot({
-    //   rootPath: join(__dirname, '..', 'public'),
-    //   serveRoot: '/admin',
-    // }),
-    // 정적 파일 서빙 - 프론트엔드 src 폴더 직접 연결
-    ServeStaticModule.forRoot({
-      rootPath: resolve(process.cwd(), '../matchnow-admin-web/src'), // 프론트엔드 src 폴더
-      serveRoot: '/admin',
-      exclude: ['/api*'],
-    }),
+    // 정적 파일 서빙은 main.ts에서 Express 미들웨어로 처리
     
     ClsModule.forRoot({
       global: true,
@@ -58,7 +46,6 @@ import { resolve } from 'path';
       },
     }),
     
-    // MongoDB 연결 (기존)
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -67,7 +54,7 @@ import { resolve } from 'path';
                     process.env.MONGODB_URI || 
                     'mongodb://localhost:27017/match-now-dev';
         
-        console.log('🔍 Final MongoDB URI:', uri);
+        console.log('🔍 MongoDB URI:', uri);
         
         return {
           uri,
@@ -78,14 +65,12 @@ import { resolve } from 'path';
       inject: [ConfigService],
     }),
     
-    // MySQL 연결 (신규)
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: getTypeOrmConfig,
     }),
     
-    // 기존 모듈들
     UsersModule,
     SportsCategoriesModule,
     LeagueSeasonsModule,
@@ -95,7 +80,7 @@ import { resolve } from 'path';
     TeamsModule,
     GamesModule,
     BetsApiModule,
-    FootballMatchesModule, // 새로 추가된 축구 경기 관리 모듈
+    FootballMatchesModule,
     AuthModule,
   ],
   controllers: [AppController],
