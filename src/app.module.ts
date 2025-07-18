@@ -25,6 +25,7 @@ import { GamesModule } from './modules/games/games.module';
 import { BetsApiModule } from './modules/betsapi/betsapi.module';
 import { FootballMatchesModule } from './modules/football-matches/football-matches.module'; // 새로 추가
 import { AuthModule } from './auth/auth.module';
+import { resolve } from 'path';
 
 @Module({
   imports: [
@@ -33,10 +34,16 @@ import { AuthModule } from './auth/auth.module';
       isGlobal: true,
     }),
     
-    // 정적 파일 서빙 모듈 추가
+    // // 정적 파일 서빙 모듈 추가
+    // ServeStaticModule.forRoot({
+    //   rootPath: join(__dirname, '..', 'public'),
+    //   serveRoot: '/admin',
+    // }),
+    // 정적 파일 서빙 - 프론트엔드 src 폴더 직접 연결
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public'),
+      rootPath: resolve(process.cwd(), '../matchnow-admin-web/src'), // 프론트엔드 src 폴더
       serveRoot: '/admin',
+      exclude: ['/api*'],
     }),
     
     ClsModule.forRoot({
