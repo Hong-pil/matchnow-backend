@@ -1,0 +1,11 @@
+apps:
+  - script: dist/src/main.js
+    name: matchnow-backend
+    instances: 1
+    exec_mode: fork
+    env_development:
+      NODE_ENV: development
+      PORT: 4011
+    env_production:
+      NODE_ENV: production
+      PORT: 4011
