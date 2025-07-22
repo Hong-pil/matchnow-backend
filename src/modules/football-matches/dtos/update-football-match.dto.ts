@@ -10,13 +10,18 @@ export class UpdateFootballMatchDto extends PartialType(
     'league',
     'home',
     'away',
+    'o_home',      // 🆕 추가
+    'o_away',      // 🆕 추가
     'ss',
     'scores',
     'timer',
+    'stats',       // 🆕 추가
     'bet365_id',
     'round',
     'status',
     'adminNote',
+    'lastSyncAt',  // 🆕 추가
+    'dataSource',  // 🆕 추가
   ] as const)
 ) {}
 

@@ -21,6 +21,19 @@ export interface MergedMatch {
     image_id?: string;
     cc?: string;
   };
+  // 🆕 대체 팀 정보 추가
+  o_home?: {
+    id: string;
+    name: string;
+    image_id?: string;
+    cc?: string;
+  };
+  o_away?: {
+    id: string;
+    name: string;
+    image_id?: string;
+    cc?: string;
+  };
   ss?: string;
   scores?: {
     "1"?: { home: string; away: string };
@@ -33,6 +46,36 @@ export interface MergedMatch {
     ta?: number;
     md?: number;
   };
+  // 🆕 상세 통계 추가
+  stats?: {
+    attacks?: [string, string];
+    dangerous_attacks?: [string, string];
+    ball_safe?: [string, string];
+    passing_accuracy?: [string, string];
+    key_passes?: [string, string];
+    crosses?: [string, string];
+    crossing_accuracy?: [string, string];
+    possession_rt?: [string, string];
+    goalattempts?: [string, string];
+    on_target?: [string, string];
+    off_target?: [string, string];
+    shots_blocked?: [string, string];
+    saves?: [string, string];
+    goals?: [string, string];
+    xg?: [string, string];
+    corners?: [string, string];
+    corner_f?: [string, string];
+    corner_h?: [string, string];
+    yellowcards?: [string, string];
+    redcards?: [string, string];
+    yellowred_cards?: [string, string];
+    fouls?: [string, string];
+    offsides?: [string, string];
+    penalties?: [string, string];
+    injuries?: [string, string];
+    substitutions?: [string, string];
+    action_areas?: [string, string];
+  };
   bet365_id?: string;
   round?: string;
   _id?: string;
@@ -40,6 +83,10 @@ export interface MergedMatch {
   isModified: boolean;
   isLocalOnly?: boolean;
   localData?: any;
+  // 🆕 추가 메타데이터
+  fullStats?: any;
+  dataSource?: string;
+  lastSyncAt?: Date;
 }
 
 export interface EnhancedMatchResponse {

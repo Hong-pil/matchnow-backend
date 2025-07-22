@@ -103,139 +103,174 @@ export class FootballMatchesService {
 
   // ⭐ 완전한 BetsAPI 데이터를 로컬 DB에 동기화 (모든 필드 저장)
   async syncFromBetsApi(betsApiMatches: any[]): Promise<{ created: number; updated: number }> {
-    let created = 0;
-    let updated = 0;
+  let created = 0;
+  let updated = 0;
 
-    this.logger.log(`🔄 BetsAPI 데이터 동기화 시작 - ${betsApiMatches.length}개 경기`);
+  this.logger.log(`🔄 BetsAPI 데이터 동기화 시작 - ${betsApiMatches.length}개 경기`);
 
-    for (const match of betsApiMatches) {
-      try {
-        const existingMatch = await this.getByBetsApiId(match.id);
-        
-        // 완전한 경기 데이터 매핑
-        const fullMatchData = this.mapBetsApiToFullSchema(match);
-        
-        if (existingMatch) {
-          // 기존 경기 업데이트 (모든 필드)
-          await this.footballMatchesRepository.updateById(existingMatch._id, {
-            ...fullMatchData,
-            lastSyncAt: new Date(),
-          });
-          updated++;
-          this.logger.debug(`✏️ 경기 업데이트: ${match.home?.name} vs ${match.away?.name}`);
-        } else {
-          // 새 경기 생성 (모든 필드)
-          await this.create({
-            ...fullMatchData,
-            betsApiId: match.id,
-            dataSource: 'betsapi',
-            lastSyncAt: new Date(),
-            status: 'active',
-          });
-          created++;
-          this.logger.debug(`🆕 경기 생성: ${match.home?.name} vs ${match.away?.name}`);
-        }
-      } catch (error) {
-        this.logger.error(`❌ 경기 동기화 실패 (ID: ${match.id}):`, error.message);
+  for (const match of betsApiMatches) {
+    try {
+      const existingMatch = await this.getByBetsApiId(match.id);
+      
+      // 완전한 경기 데이터 매핑
+      const fullMatchData = this.mapBetsApiToFullSchema(match);
+      
+      if (existingMatch) {
+        // 기존 경기 업데이트 (모든 필드)
+        await this.footballMatchesRepository.updateById(existingMatch._id, {
+          ...fullMatchData,
+          lastSyncAt: new Date(),
+        });
+        updated++;
+        this.logger.debug(`✏️ 경기 업데이트: ${match.home?.name} vs ${match.away?.name}`);
+      } else {
+        // 🔧 타입 안전성을 위한 필수 필드 검증 및 기본값 설정
+        const createData: CreateFootballMatchDto = {
+          betsApiId: match.id,
+          sport_id: fullMatchData.sport_id || '1', // 기본값 설정
+          time: fullMatchData.time || Math.floor(Date.now() / 1000).toString(), // 기본값 설정
+          time_status: fullMatchData.time_status || '0', // 기본값 설정
+          league: fullMatchData.league || {
+            id: 'unknown',
+            name: 'Unknown League'
+          },
+          home: fullMatchData.home || {
+            id: 'unknown_home',
+            name: 'Unknown Home Team'
+          },
+          away: fullMatchData.away || {
+            id: 'unknown_away',
+            name: 'Unknown Away Team'
+          },
+          // 선택적 필드들
+          o_home: fullMatchData.o_home,
+          o_away: fullMatchData.o_away,
+          ss: fullMatchData.ss,
+          scores: fullMatchData.scores,
+          timer: fullMatchData.timer,
+          stats: fullMatchData.stats,
+          bet365_id: fullMatchData.bet365_id,
+          round: fullMatchData.round,
+          // 메타데이터
+          dataSource: 'betsapi',
+          lastSyncAt: new Date(),
+          status: 'active',
+        };
+
+        await this.create(createData);
+        created++;
+        this.logger.debug(`🆕 경기 생성: ${match.home?.name} vs ${match.away?.name}`);
       }
+    } catch (error) {
+      this.logger.error(`❌ 경기 동기화 실패 (ID: ${match.id}):`, error.message);
     }
-
-    this.logger.log(`✅ 동기화 완료 - 생성: ${created}, 업데이트: ${updated}`);
-    return { created, updated };
   }
+
+  this.logger.log(`✅ 동기화 완료 - 생성: ${created}, 업데이트: ${updated}`);
+  return { created, updated };
+}
 
   // ⭐ BetsAPI 데이터를 완전한 스키마로 매핑
   private mapBetsApiToFullSchema(betsApiMatch: any): Partial<FootballMatchDocument> {
-    return {
-      sport_id: betsApiMatch.sport_id,
-      time: betsApiMatch.time,
-      time_status: betsApiMatch.time_status,
-      league: {
-        id: betsApiMatch.league?.id,
-        name: betsApiMatch.league?.name,
-        cc: betsApiMatch.league?.cc,
-      },
-      home: {
-        id: betsApiMatch.home?.id,
-        name: betsApiMatch.home?.name,
-        image_id: betsApiMatch.home?.image_id,
-        cc: betsApiMatch.home?.cc,
-      },
-      away: {
-        id: betsApiMatch.away?.id,
-        name: betsApiMatch.away?.name,
-        image_id: betsApiMatch.away?.image_id,
-        cc: betsApiMatch.away?.cc,
-      },
-      // 대체 팀 정보
-      o_home: betsApiMatch.o_home ? {
-        id: betsApiMatch.o_home.id,
-        name: betsApiMatch.o_home.name,
-        image_id: betsApiMatch.o_home.image_id,
-        cc: betsApiMatch.o_home.cc,
-      } : undefined,
-      o_away: betsApiMatch.o_away ? {
-        id: betsApiMatch.o_away.id,
-        name: betsApiMatch.o_away.name,
-        image_id: betsApiMatch.o_away.image_id,
-        cc: betsApiMatch.o_away.cc,
-      } : undefined,
-      ss: betsApiMatch.ss,
-      scores: betsApiMatch.scores,
-      timer: betsApiMatch.timer,
-      // ⭐ 완전한 통계 데이터 저장
-      stats: betsApiMatch.stats ? {
-        // 공격 통계
-        attacks: betsApiMatch.stats.attacks,
-        dangerous_attacks: betsApiMatch.stats.dangerous_attacks,
-        
-        // 볼 점유 및 패스
-        ball_safe: betsApiMatch.stats.ball_safe,
-        passing_accuracy: betsApiMatch.stats.passing_accuracy,
-        key_passes: betsApiMatch.stats.key_passes,
-        crosses: betsApiMatch.stats.crosses,
-        crossing_accuracy: betsApiMatch.stats.crossing_accuracy,
-        possession_rt: betsApiMatch.stats.possession_rt,
-        
-        // 슛 관련
-        goalattempts: betsApiMatch.stats.goalattempts,
-        on_target: betsApiMatch.stats.on_target,
-        off_target: betsApiMatch.stats.off_target,
-        shots_blocked: betsApiMatch.stats.shots_blocked,
-        saves: betsApiMatch.stats.saves,
-        
-        // 골
-        goals: betsApiMatch.stats.goals,
-        xg: betsApiMatch.stats.xg, // Expected Goals
-        
-        // 코너킥
-        corners: betsApiMatch.stats.corners,
-        corner_f: betsApiMatch.stats.corner_f,
-        corner_h: betsApiMatch.stats.corner_h,
-        
-        // 카드
-        yellowcards: betsApiMatch.stats.yellowcards,
-        redcards: betsApiMatch.stats.redcards,
-        yellowred_cards: betsApiMatch.stats.yellowred_cards,
-        
-        // 파울 및 오프사이드
-        fouls: betsApiMatch.stats.fouls,
-        offsides: betsApiMatch.stats.offsides,
-        
-        // 페널티
-        penalties: betsApiMatch.stats.penalties,
-        
-        // 부상 및 교체
-        injuries: betsApiMatch.stats.injuries,
-        substitutions: betsApiMatch.stats.substitutions,
-        
-        // 액션 에리어
-        action_areas: betsApiMatch.stats.action_areas,
-      } : undefined,
-      bet365_id: betsApiMatch.bet365_id,
-      round: betsApiMatch.round,
-    };
-  }
+  return {
+    sport_id: betsApiMatch.sport_id || '1',
+    time: betsApiMatch.time || Math.floor(Date.now() / 1000).toString(),
+    time_status: betsApiMatch.time_status || '0',
+    league: betsApiMatch.league ? {
+      id: betsApiMatch.league.id || 'unknown',
+      name: betsApiMatch.league.name || 'Unknown League',
+      cc: betsApiMatch.league.cc,
+    } : {
+      id: 'unknown',
+      name: 'Unknown League'
+    },
+    home: betsApiMatch.home ? {
+      id: betsApiMatch.home.id || 'unknown_home',
+      name: betsApiMatch.home.name || 'Unknown Home Team',
+      image_id: betsApiMatch.home.image_id,
+      cc: betsApiMatch.home.cc,
+    } : {
+      id: 'unknown_home',
+      name: 'Unknown Home Team'
+    },
+    away: betsApiMatch.away ? {
+      id: betsApiMatch.away.id || 'unknown_away',
+      name: betsApiMatch.away.name || 'Unknown Away Team',
+      image_id: betsApiMatch.away.image_id,
+      cc: betsApiMatch.away.cc,
+    } : {
+      id: 'unknown_away',
+      name: 'Unknown Away Team'
+    },
+    // 대체 팀 정보 (안전하게 처리)
+    o_home: betsApiMatch.o_home ? {
+      id: betsApiMatch.o_home.id,
+      name: betsApiMatch.o_home.name,
+      image_id: betsApiMatch.o_home.image_id,
+      cc: betsApiMatch.o_home.cc,
+    } : undefined,
+    o_away: betsApiMatch.o_away ? {
+      id: betsApiMatch.o_away.id,
+      name: betsApiMatch.o_away.name,
+      image_id: betsApiMatch.o_away.image_id,
+      cc: betsApiMatch.o_away.cc,
+    } : undefined,
+    ss: betsApiMatch.ss,
+    scores: betsApiMatch.scores,
+    timer: betsApiMatch.timer,
+    // ⭐ 완전한 통계 데이터 저장 (안전하게 처리)
+    stats: betsApiMatch.stats ? {
+      // 공격 통계
+      attacks: betsApiMatch.stats.attacks,
+      dangerous_attacks: betsApiMatch.stats.dangerous_attacks,
+      
+      // 볼 점유 및 패스
+      ball_safe: betsApiMatch.stats.ball_safe,
+      passing_accuracy: betsApiMatch.stats.passing_accuracy,
+      key_passes: betsApiMatch.stats.key_passes,
+      crosses: betsApiMatch.stats.crosses,
+      crossing_accuracy: betsApiMatch.stats.crossing_accuracy,
+      possession_rt: betsApiMatch.stats.possession_rt,
+      
+      // 슛 관련
+      goalattempts: betsApiMatch.stats.goalattempts,
+      on_target: betsApiMatch.stats.on_target,
+      off_target: betsApiMatch.stats.off_target,
+      shots_blocked: betsApiMatch.stats.shots_blocked,
+      saves: betsApiMatch.stats.saves,
+      
+      // 골
+      goals: betsApiMatch.stats.goals,
+      xg: betsApiMatch.stats.xg, // Expected Goals
+      
+      // 코너킥
+      corners: betsApiMatch.stats.corners,
+      corner_f: betsApiMatch.stats.corner_f,
+      corner_h: betsApiMatch.stats.corner_h,
+      
+      // 카드
+      yellowcards: betsApiMatch.stats.yellowcards,
+      redcards: betsApiMatch.stats.redcards,
+      yellowred_cards: betsApiMatch.stats.yellowred_cards,
+      
+      // 파울 및 오프사이드
+      fouls: betsApiMatch.stats.fouls,
+      offsides: betsApiMatch.stats.offsides,
+      
+      // 페널티
+      penalties: betsApiMatch.stats.penalties,
+      
+      // 부상 및 교체
+      injuries: betsApiMatch.stats.injuries,
+      substitutions: betsApiMatch.stats.substitutions,
+      
+      // 액션 에리어
+      action_areas: betsApiMatch.stats.action_areas,
+    } : undefined,
+    bet365_id: betsApiMatch.bet365_id,
+    round: betsApiMatch.round,
+  };
+}
 
   // 관리자가 수정한 경기와 BetsAPI 데이터 병합
   async getMergedMatches(type: 'upcoming' | 'inplay' | 'ended', betsApiMatches: any[]): Promise<MergedMatch[]> {
