@@ -5,13 +5,13 @@ import { IsArray, IsString, IsBoolean, IsOptional } from 'class-validator';
 import { 
   EnhancedBetsApiService, 
   SelectiveSyncOptions, 
-  SelectiveSyncResult // 🔧 export된 인터페이스 import
+  SelectiveSyncResult // export된 인터페이스 import
 } from '../services/enhanced-betsapi.service';
 import { FootballMatchesService } from '../../football-matches/services/football-matches.service';
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
 
-// 🆕 선택적 동기화 DTO
+// 선택적 동기화 DTO
 class SelectiveSyncDto {
   @IsArray()
   @IsString({ each: true })
@@ -37,57 +37,6 @@ export class EnhancedBetsApiController {
   // ======================
   // 기본 경기 조회 API
   // ======================
-
-  @Post('sync/selective')
-  @ApiOperation({
-    summary: '선택적 경기 동기화',
-    description: '선택된 경기들만 BetsAPI에서 가져와 MongoDB에 동기화합니다.',
-  })
-  @ApiResponse({ 
-    status: 200, 
-    description: '선택적 동기화가 성공적으로 완료되었습니다.',
-  })
-  @ApiBody({ 
-    type: SelectiveSyncDto,
-    description: '동기화할 경기 ID 목록과 옵션들',
-    examples: {
-      example1: {
-        summary: '기본 동기화',
-        value: {
-          eventIds: ['10150692', '10150693', '10150694'],
-          options: {
-            forceOverwrite: true,
-            statsOnly: false,
-            dateFilter: '20250122',
-            matchType: 'upcoming'
-          }
-        }
-      }
-    }
-  })
-  async selectiveSync(@Body() selectiveSyncDto: SelectiveSyncDto): Promise<{
-    success: boolean;
-    data: SelectiveSyncResult;
-    message: string;
-  }> {
-    const { eventIds, options = {} } = selectiveSyncDto;
-    
-    console.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
-    console.log('📋 동기화 옵션:', options);
-    
-    try {
-      const result = await this.enhancedBetsApiService.selectiveSync(eventIds, options);
-      
-      return {
-        success: true,
-        data: result,
-        message: `선택적 동기화 완료: ${result.updated}개 업데이트, ${result.created}개 생성, ${result.errors}개 오류`
-      };
-    } catch (error) {
-      console.error('❌ 선택적 동기화 실패:', error);
-      throw error;
-    }
-  }
 
   @Get('matches/upcoming')
   @ApiOperation({
@@ -211,17 +160,17 @@ export class EnhancedBetsApiController {
   }
 
   // ======================
-  // 동기화 API
+  // 🔧 수정된 동기화 API
   // ======================
 
   @Post('sync/auto/:type')
   @ApiOperation({
-    summary: 'BetsAPI → MongoDB 완전 동기화',
-    description: 'BetsAPI에서 특정 타입의 경기를 모든 데이터와 함께 가져와 MongoDB에 저장합니다.',
+    summary: 'BetsAPI → MongoDB 스마트 동기화 (토글 상태 고려)',
+    description: 'BetsAPI에서 특정 타입의 경기를 가져와 MongoDB에 저장하되, 동기화 허용 토글이 꺼진 경기는 건드리지 않습니다.',
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'BetsAPI → MongoDB 완전 동기화가 성공적으로 완료되었습니다.',
+    description: 'BetsAPI → MongoDB 스마트 동기화가 성공적으로 완료되었습니다.',
   })
   @ApiParam({
     name: 'type',
@@ -239,29 +188,80 @@ export class EnhancedBetsApiController {
     @Param('type') type: MatchType,
     @Query('day') day?: string,
   ) {
-    const result = await this.enhancedBetsApiService.autoSyncMatches(type, day);
+    const result = await this.enhancedBetsApiService.smartAutoSync(type, day);
     return {
       success: true,
       data: result,
-      message: `Complete BetsAPI → MongoDB sync completed: ${result.created} created, ${result.updated} updated with all stats`
+      message: `스마트 동기화 완료: ${result.created}개 생성, ${result.updated}개 업데이트, ${result.skipped}개 건너뜀 (동기화 차단됨)`
     };
+  }
+
+  @Post('sync/selective')
+  @ApiOperation({
+    summary: '선택적 경기 동기화',
+    description: '선택된 경기들만 BetsAPI에서 가져와 MongoDB에 동기화합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '선택적 동기화가 성공적으로 완료되었습니다.',
+  })
+  @ApiBody({ 
+    type: SelectiveSyncDto,
+    description: '동기화할 경기 ID 목록과 옵션들',
+    examples: {
+      example1: {
+        summary: '기본 동기화',
+        value: {
+          eventIds: ['10150692', '10150693', '10150694'],
+          options: {
+            forceOverwrite: true,
+            statsOnly: false,
+            dateFilter: '20250122',
+            matchType: 'upcoming'
+          }
+        }
+      }
+    }
+  })
+  async selectiveSync(@Body() selectiveSyncDto: SelectiveSyncDto): Promise<{
+    success: boolean;
+    data: SelectiveSyncResult;
+    message: string;
+  }> {
+    const { eventIds, options = {} } = selectiveSyncDto;
+    
+    console.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
+    console.log('📋 동기화 옵션:', options);
+    
+    try {
+      const result = await this.enhancedBetsApiService.selectiveSync(eventIds, options);
+      
+      return {
+        success: true,
+        data: result,
+        message: `선택적 동기화 완료: ${result.updated}개 업데이트, ${result.created}개 생성, ${result.errors}개 오류`
+      };
+    } catch (error) {
+      console.error('❌ 선택적 동기화 실패:', error);
+      throw error;
+    }
   }
 
   @Post('sync/full')
   @ApiOperation({
-    summary: 'BetsAPI → MongoDB 전체 완전 동기화',
-    description: 'BetsAPI에서 오늘과 내일의 모든 경기를 완전한 데이터로 가져와 MongoDB에 저장합니다.',
+    summary: 'BetsAPI → MongoDB 전체 스마트 동기화',
+    description: 'BetsAPI에서 오늘과 내일의 모든 경기를 가져와 MongoDB에 저장하되, 동기화 차단된 경기는 보호합니다.',
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'BetsAPI → MongoDB 전체 완전 동기화가 성공적으로 완료되었습니다.',
+    description: 'BetsAPI → MongoDB 전체 스마트 동기화가 성공적으로 완료되었습니다.',
   })
   async fullSync() {
-    const result = await this.enhancedBetsApiService.fullSync();
+    const result = await this.enhancedBetsApiService.smartFullSync();
     return {
       success: true,
       data: result,
-      message: `Complete BetsAPI → MongoDB full sync: ${result.total.created} total created, ${result.total.updated} total updated with all statistics`
+      message: `전체 스마트 동기화 완료: ${result.total.created}개 총 생성, ${result.total.updated}개 총 업데이트, ${result.total.skipped}개 총 건너뜀`
     };
   }
 
@@ -279,7 +279,7 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: result,
-      message: `Incomplete data resync completed: ${result.resynced} resynced, ${result.errors} errors`
+      message: `불완전 데이터 재동기화 완료: ${result.resynced}개 재동기화, ${result.errors}개 오류`
     };
   }
 
@@ -473,7 +473,7 @@ export class EnhancedBetsApiController {
   }
 
   // ======================
-  // 동기화 상태 체크
+  // 🔧 수정된 동기화 상태 체크
   // ======================
 
   @Get('check/sync-needed')
@@ -486,34 +486,58 @@ export class EnhancedBetsApiController {
     description: '동기화 필요 여부가 성공적으로 확인되었습니다.',
   })
   async checkSyncNeeded() {
-    const dbStats = await this.enhancedBetsApiService.getDbMatchesCount();
-    const completeness = await this.footballMatchesService.checkDataCompleteness();
-    
-    const syncNeeded = dbStats.total === 0;
-    const incompleteData = completeness.completeness_percentage < 80;
-    
-    let recommendation = '';
-    if (syncNeeded) {
-      recommendation = 'MongoDB에 데이터가 없습니다. "전체 동기화"를 실행하여 BetsAPI에서 완전한 데이터를 가져오세요.';
-    } else if (incompleteData) {
-      recommendation = `데이터 완성도가 ${completeness.completeness_percentage}%입니다. "불완전한 데이터 재동기화"를 실행하세요.`;
-    } else if (dbStats.upcoming === 0) {
-      recommendation = '예정된 경기가 없습니다. "예정 경기 동기화"를 실행하세요.';
-    } else {
-      recommendation = 'MongoDB에 충분하고 완전한 데이터가 있습니다.';
+    try {
+      const dbStats = await this.enhancedBetsApiService.getDbMatchesCount();
+      let completeness = { completeness_percentage: 0 };
+      
+      // 🔧 수정: completeness 체크 시 에러 처리
+      try {
+        completeness = await this.footballMatchesService.checkDataCompleteness();
+      } catch (error) {
+        console.warn('⚠️ 완성도 체크 실패, 기본값 사용:', error.message);
+      }
+      
+      const syncNeeded = dbStats.total === 0;
+      const incompleteData = completeness.completeness_percentage < 80;
+      
+      let recommendation = '';
+      if (syncNeeded) {
+        recommendation = 'MongoDB에 데이터가 없습니다. "동기화"를 실행하여 BetsAPI에서 완전한 데이터를 가져오세요.';
+      } else if (incompleteData) {
+        recommendation = `데이터 완성도가 ${completeness.completeness_percentage}%입니다. 동기화를 실행하여 데이터를 보완하세요.`;
+      } else if (dbStats.upcoming === 0) {
+        recommendation = '예정된 경기가 없습니다. "동기화"를 실행하여 최신 경기를 가져오세요.';
+      } else {
+        recommendation = 'MongoDB에 충분하고 완전한 데이터가 있습니다.';
+      }
+      
+      return {
+        success: true,
+        data: {
+          syncNeeded,
+          incompleteData,
+          dbStats,
+          completeness: completeness.completeness_percentage,
+          recommendation,
+        },
+        message: 'Sync requirement and data completeness check completed'
+      };
+    } catch (error) {
+      console.error('❌ 동기화 상태 체크 실패:', error);
+      
+      // 🔧 수정: 에러 발생 시 기본 응답 반환
+      return {
+        success: true,
+        data: {
+          syncNeeded: true,
+          incompleteData: true,
+          dbStats: { upcoming: 0, inplay: 0, ended: 0, total: 0 },
+          completeness: 0,
+          recommendation: '상태 확인 중 오류가 발생했습니다. "동기화"를 실행하여 데이터를 가져오세요.',
+        },
+        message: 'Sync status check completed with fallback data'
+      };
     }
-    
-    return {
-      success: true,
-      data: {
-        syncNeeded,
-        incompleteData,
-        dbStats,
-        completeness: completeness.completeness_percentage,
-        recommendation,
-      },
-      message: 'Sync requirement and data completeness check completed'
-    };
   }
 
   @Get('debug/sample-data')
@@ -542,6 +566,7 @@ export class EnhancedBetsApiController {
         hasOTeams: !!(match.o_home || match.o_away),
         dataSource: match.dataSource,
         lastSyncAt: match.lastSyncAt,
+        allowSync: match.allowSync, // 🆕 동기화 허용 상태 추가
       })),
     };
 
