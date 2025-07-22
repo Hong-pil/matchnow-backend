@@ -4,6 +4,7 @@ import {
   Get, 
   Post, 
   Put, 
+  Patch, // 🆕 추가
   Delete, 
   Body, 
   Param, 
@@ -126,10 +127,50 @@ export class FootballMatchesController {
     return FootballMatchResponse.ok(match);
   }
 
+  // 🆕 PATCH 엔드포인트 추가 (부분 업데이트용)
+  @Patch(':id')
+  @ApiOperation({
+    summary: '축구 경기 부분 수정',
+    description: '축구 경기의 특정 필드만 수정합니다. (동기화 허용 상태 등)',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '축구 경기가 성공적으로 수정되었습니다.',
+    type: UpdateFootballMatchResponse
+  })
+  @ApiParam({
+    name: 'id',
+    description: '축구 경기 ID (MongoDB ObjectId)',
+  })
+  @ApiBody({ 
+    type: UpdateFootballMatchDto,
+    description: '수정할 필드들 (부분 업데이트)',
+    examples: {
+      syncToggle: {
+        summary: '동기화 허용 상태 변경',
+        value: { allowSync: false }
+      },
+      quickUpdate: {
+        summary: '빠른 수정',
+        value: { 
+          allowSync: true,
+          adminNote: '관리자가 수정함'
+        }
+      }
+    }
+  })
+  async patch(
+    @Param('id') id: string,
+    @Body() patchDto: UpdateFootballMatchDto,
+  ) {
+    const updatedMatch = await this.footballMatchesService.update(id, patchDto);
+    return UpdateFootballMatchResponse.ok(updatedMatch);
+  }
+
   @Put(':id')
   @ApiOperation({
-    summary: '축구 경기 수정',
-    description: '기존 축구 경기 정보를 수정합니다.',
+    summary: '축구 경기 전체 수정',
+    description: '축구 경기 정보를 전체적으로 수정합니다.',
   })
   @ApiResponse({ 
     status: 200, 

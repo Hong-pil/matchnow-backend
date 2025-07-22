@@ -1,4 +1,4 @@
-// src/common/filters/http-exception.filter.ts
+// src/common/filters/http-exception.filter.ts (개선된 버전)
 import {
   ExceptionFilter,
   Catch,
@@ -33,16 +33,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
         error = (exceptionResponse as any).error || 'HTTP_EXCEPTION';
       }
     } else if (exception instanceof SyntaxError && exception.message.includes('JSON')) {
-      // 🔧 JSON 파싱 에러 처리
       status = HttpStatus.BAD_REQUEST;
       message = 'Invalid JSON format in request body';
       error = 'JSON_PARSE_ERROR';
     } else if (exception instanceof Error) {
       message = exception.message;
       error = 'APPLICATION_ERROR';
+      
+      // 🆕 MongoDB ObjectId 에러 처리
+      if (exception.message.includes('ObjectId')) {
+        status = HttpStatus.BAD_REQUEST;
+        message = '올바르지 않은 ID 형식입니다.';
+        error = 'INVALID_OBJECT_ID';
+      }
     }
 
-    // 로그 기록
+    // 로그 기록 개선
     this.logger.error(
       `${request.method} ${request.url} - ${status} - ${message}`,
       exception instanceof Error ? exception.stack : exception,
@@ -50,7 +56,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // 🔧 수정: 일관된 JSON 응답 구조
     const errorResponse = {
-      success: false,
+      success: false, // 🆕 추가: 프론트엔드에서 사용하는 success 필드
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
@@ -62,6 +68,3 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json(errorResponse);
   }
 }
-
-// main.ts에서 사용
-// app.useGlobalFilters(new HttpExceptionFilter());

@@ -1,5 +1,5 @@
 // src/modules/football-matches/services/football-matches.service.ts (완전 데이터 저장 버전)
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common'; // 🆕 BadRequestException 추가
 import { ObjectId } from 'mongodb';
 import { ClsService } from 'nestjs-cls';
 import { AppClsStore } from '@/common/types/cls.type';
@@ -57,18 +57,49 @@ export class FootballMatchesService {
     return this.footballMatchesRepository.findByDateRange(startDate, endDate);
   }
 
+  // 🔧 수정: update 메서드 개선 (에러 핸들링 및 로깅 추가)
   async update(id: string, updateDto: UpdateFootballMatchDto): Promise<FootballMatchDocument> {
-    const existingMatch = await this.getById(id);
-    if (!existingMatch) {
-      throw new NotFoundException('경기를 찾을 수 없습니다.');
-    }
+    this.logger.log(`경기 업데이트 요청 - ID: ${id}, 업데이트 필드:`, Object.keys(updateDto));
+    
+    try {
+      // ObjectId 형식 검증
+      if (!ObjectId.isValid(id)) {
+        throw new BadRequestException(`올바르지 않은 ObjectId 형식입니다: ${id}`);
+      }
 
-    const updatedMatch = await this.footballMatchesRepository.updateById(new ObjectId(id), updateDto);
-    if (!updatedMatch) {
-      throw new NotFoundException('경기 업데이트에 실패했습니다.');
-    }
+      // 기존 경기 확인
+      const existingMatch = await this.footballMatchesRepository.findById(new ObjectId(id));
+      if (!existingMatch) {
+        throw new NotFoundException(`경기를 찾을 수 없습니다. ID: ${id}`);
+      }
 
-    return updatedMatch;
+      this.logger.log(`기존 경기 발견: ${existingMatch.home?.name} vs ${existingMatch.away?.name}`);
+
+      // 업데이트 실행
+      const updatedMatch = await this.footballMatchesRepository.updateById(
+        new ObjectId(id), 
+        {
+          ...updateDto,
+          updatedAt: new Date(), // 수정 시간 자동 업데이트
+        }
+      );
+
+      if (!updatedMatch) {
+        throw new NotFoundException('경기 업데이트에 실패했습니다.');
+      }
+
+      this.logger.log(`경기 업데이트 완료 - ID: ${id}`);
+      
+      // 🆕 특정 필드 업데이트 로깅
+      if ('allowSync' in updateDto) {
+        this.logger.log(`동기화 허용 상태 변경: ${existingMatch.allowSync} → ${updateDto.allowSync}`);
+      }
+
+      return updatedMatch;
+    } catch (error) {
+      this.logger.error(`경기 업데이트 실패 - ID: ${id}`, error.stack);
+      throw error;
+    }
   }
 
   async softDelete(id: string): Promise<FootballMatchDocument> {
