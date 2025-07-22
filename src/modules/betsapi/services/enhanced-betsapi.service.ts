@@ -5,14 +5,15 @@ import { FootballMatchesService } from '../../football-matches/services/football
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
 
-interface SelectiveSyncOptions {
+// 🔧 인터페이스들을 export로 변경
+export interface SelectiveSyncOptions {
   forceOverwrite?: boolean;
   statsOnly?: boolean;
   dateFilter?: string;
   matchType?: string;
 }
 
-interface SelectiveSyncResult {
+export interface SelectiveSyncResult {
   updated: number;
   created: number;
   errors: number;
@@ -487,6 +488,4 @@ export class EnhancedBetsApiService {
       adminNote: dbMatch.adminNote,
     };
   }
-
-  
 }

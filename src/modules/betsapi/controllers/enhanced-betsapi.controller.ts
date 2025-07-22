@@ -1,8 +1,12 @@
-// src/modules/betsapi/controllers/enhanced-betsapi.controller.ts (완전 기능 버전)
+// src/modules/betsapi/controllers/enhanced-betsapi.controller.ts (수정된 버전)
 import { Controller, Get, Post, Query, Param, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 import { IsArray, IsString, IsBoolean, IsOptional } from 'class-validator';
-import { EnhancedBetsApiService } from '../services/enhanced-betsapi.service';
+import { 
+  EnhancedBetsApiService, 
+  SelectiveSyncOptions, 
+  SelectiveSyncResult // 🔧 export된 인터페이스 import
+} from '../services/enhanced-betsapi.service';
 import { FootballMatchesService } from '../../football-matches/services/football-matches.service';
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
@@ -34,7 +38,7 @@ export class EnhancedBetsApiController {
   // 기본 경기 조회 API
   // ======================
 
-   @Post('sync/selective')
+  @Post('sync/selective')
   @ApiOperation({
     summary: '선택적 경기 동기화',
     description: '선택된 경기들만 BetsAPI에서 가져와 MongoDB에 동기화합니다.',
@@ -61,7 +65,11 @@ export class EnhancedBetsApiController {
       }
     }
   })
-  async selectiveSync(@Body() selectiveSyncDto: SelectiveSyncDto) {
+  async selectiveSync(@Body() selectiveSyncDto: SelectiveSyncDto): Promise<{
+    success: boolean;
+    data: SelectiveSyncResult;
+    message: string;
+  }> {
     const { eventIds, options = {} } = selectiveSyncDto;
     
     console.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
