@@ -1,10 +1,26 @@
 // src/modules/betsapi/controllers/enhanced-betsapi.controller.ts (완전 기능 버전)
-import { Controller, Get, Post, Query, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Query, Param, Body } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
+import { IsArray, IsString, IsBoolean, IsOptional } from 'class-validator';
 import { EnhancedBetsApiService } from '../services/enhanced-betsapi.service';
 import { FootballMatchesService } from '../../football-matches/services/football-matches.service';
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
+
+// 🆕 선택적 동기화 DTO
+class SelectiveSyncDto {
+  @IsArray()
+  @IsString({ each: true })
+  eventIds: string[];
+
+  @IsOptional()
+  options?: {
+    forceOverwrite?: boolean;
+    statsOnly?: boolean;
+    dateFilter?: string;
+    matchType?: string;
+  };
+}
 
 @ApiTags('Enhanced BetsAPI - Complete Football Data Management')
 @Controller('/api/v1/enhanced-football')
@@ -17,6 +33,53 @@ export class EnhancedBetsApiController {
   // ======================
   // 기본 경기 조회 API
   // ======================
+
+   @Post('sync/selective')
+  @ApiOperation({
+    summary: '선택적 경기 동기화',
+    description: '선택된 경기들만 BetsAPI에서 가져와 MongoDB에 동기화합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '선택적 동기화가 성공적으로 완료되었습니다.',
+  })
+  @ApiBody({ 
+    type: SelectiveSyncDto,
+    description: '동기화할 경기 ID 목록과 옵션들',
+    examples: {
+      example1: {
+        summary: '기본 동기화',
+        value: {
+          eventIds: ['10150692', '10150693', '10150694'],
+          options: {
+            forceOverwrite: true,
+            statsOnly: false,
+            dateFilter: '20250122',
+            matchType: 'upcoming'
+          }
+        }
+      }
+    }
+  })
+  async selectiveSync(@Body() selectiveSyncDto: SelectiveSyncDto) {
+    const { eventIds, options = {} } = selectiveSyncDto;
+    
+    console.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
+    console.log('📋 동기화 옵션:', options);
+    
+    try {
+      const result = await this.enhancedBetsApiService.selectiveSync(eventIds, options);
+      
+      return {
+        success: true,
+        data: result,
+        message: `선택적 동기화 완료: ${result.updated}개 업데이트, ${result.created}개 생성, ${result.errors}개 오류`
+      };
+    } catch (error) {
+      console.error('❌ 선택적 동기화 실패:', error);
+      throw error;
+    }
+  }
 
   @Get('matches/upcoming')
   @ApiOperation({

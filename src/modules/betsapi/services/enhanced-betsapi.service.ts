@@ -5,6 +5,25 @@ import { FootballMatchesService } from '../../football-matches/services/football
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
 
+interface SelectiveSyncOptions {
+  forceOverwrite?: boolean;
+  statsOnly?: boolean;
+  dateFilter?: string;
+  matchType?: string;
+}
+
+interface SelectiveSyncResult {
+  updated: number;
+  created: number;
+  errors: number;
+  skipped: number;
+  details: Array<{
+    eventId: string;
+    status: 'updated' | 'created' | 'error' | 'skipped';
+    message?: string;
+  }>;
+}
+
 @Injectable()
 export class EnhancedBetsApiService {
   private readonly logger = new Logger(EnhancedBetsApiService.name);
@@ -13,6 +32,176 @@ export class EnhancedBetsApiService {
     private readonly betsApiService: BetsApiService,
     private readonly footballMatchesService: FootballMatchesService,
   ) {}
+
+  // 🆕 선택적 동기화 메서드
+  async selectiveSync(eventIds: string[], options: SelectiveSyncOptions = {}): Promise<SelectiveSyncResult> {
+    this.logger.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
+    this.logger.log(`📋 옵션: ${JSON.stringify(options)}`);
+
+    const result: SelectiveSyncResult = {
+      updated: 0,
+      created: 0,
+      errors: 0,
+      skipped: 0,
+      details: []
+    };
+
+    for (const eventId of eventIds) {
+      try {
+        this.logger.debug(`🔄 경기 처리 중: ${eventId}`);
+        
+        // 1. BetsAPI에서 경기 상세 정보 가져오기
+        const betsApiMatch = await this.fetchMatchFromBetsApi(eventId);
+        if (!betsApiMatch) {
+          result.skipped++;
+          result.details.push({
+            eventId,
+            status: 'skipped',
+            message: 'BetsAPI에서 경기를 찾을 수 없음'
+          });
+          continue;
+        }
+
+        // 2. 로컬 DB에서 기존 경기 확인
+        const existingMatch = await this.footballMatchesService.getByBetsApiId(eventId);
+        
+        // 3. 동기화 옵션에 따른 처리
+        if (existingMatch) {
+          // 기존 경기 업데이트
+          if (options.forceOverwrite || this.shouldUpdate(existingMatch, betsApiMatch, options)) {
+            await this.updateExistingMatch(existingMatch, betsApiMatch, options);
+            result.updated++;
+            result.details.push({
+              eventId,
+              status: 'updated',
+              message: '기존 경기 업데이트 완료'
+            });
+            this.logger.debug(`✅ 경기 업데이트: ${eventId}`);
+          } else {
+            result.skipped++;
+            result.details.push({
+              eventId,
+              status: 'skipped',
+              message: '업데이트 조건에 맞지 않음'
+            });
+          }
+        } else {
+          // 새 경기 생성
+          await this.createNewMatch(betsApiMatch);
+          result.created++;
+          result.details.push({
+            eventId,
+            status: 'created',
+            message: '새 경기 생성 완료'
+          });
+          this.logger.debug(`🆕 경기 생성: ${eventId}`);
+        }
+
+      } catch (error) {
+        result.errors++;
+        result.details.push({
+          eventId,
+          status: 'error',
+          message: error.message
+        });
+        this.logger.error(`❌ 경기 동기화 실패 (${eventId}):`, error.message);
+      }
+    }
+
+    this.logger.log(`✅ 선택적 동기화 완료 - 업데이트: ${result.updated}, 생성: ${result.created}, 오류: ${result.errors}, 건너뜀: ${result.skipped}`);
+    return result;
+  }
+
+  // 🆕 BetsAPI에서 경기 정보 가져오기
+  private async fetchMatchFromBetsApi(eventId: string): Promise<any | null> {
+    try {
+      // BetsAPI에서 경기 상세 정보 가져오기
+      const matchDetails = await this.betsApiService.getMatchDetails(eventId);
+      return matchDetails?.results?.[0] || null;
+    } catch (error) {
+      this.logger.warn(`⚠️ BetsAPI에서 경기 조회 실패 (${eventId}):`, error.message);
+      return null;
+    }
+  }
+
+  // 🆕 업데이트 여부 판단
+  private shouldUpdate(existingMatch: any, betsApiMatch: any, options: SelectiveSyncOptions): boolean {
+    // 강제 덮어쓰기가 활성화된 경우
+    if (options.forceOverwrite) {
+      return true;
+    }
+
+    // 통계만 업데이트하는 경우
+    if (options.statsOnly) {
+      return !existingMatch.stats || Object.keys(existingMatch.stats || {}).length === 0;
+    }
+
+    // 기본적으로 경기 상태나 스코어가 변경된 경우 업데이트
+    return (
+      existingMatch.time_status !== betsApiMatch.time_status ||
+      existingMatch.ss !== betsApiMatch.ss ||
+      !existingMatch.stats
+    );
+  }
+
+  // 🆕 기존 경기 업데이트
+  private async updateExistingMatch(existingMatch: any, betsApiMatch: any, options: SelectiveSyncOptions): Promise<void> {
+    const updateData: any = {};
+
+    if (options.statsOnly) {
+      // 통계 데이터만 업데이트
+      if (betsApiMatch.stats) {
+        updateData.stats = betsApiMatch.stats;
+      }
+      if (betsApiMatch.timer) {
+        updateData.timer = betsApiMatch.timer;
+      }
+    } else {
+      // 전체 데이터 업데이트
+      updateData.time_status = betsApiMatch.time_status;
+      updateData.ss = betsApiMatch.ss;
+      updateData.scores = betsApiMatch.scores;
+      updateData.timer = betsApiMatch.timer;
+      updateData.stats = betsApiMatch.stats;
+      
+      // 팀 정보 업데이트 (필요한 경우)
+      if (betsApiMatch.home) updateData.home = betsApiMatch.home;
+      if (betsApiMatch.away) updateData.away = betsApiMatch.away;
+      if (betsApiMatch.o_home) updateData.o_home = betsApiMatch.o_home;
+      if (betsApiMatch.o_away) updateData.o_away = betsApiMatch.o_away;
+    }
+
+    updateData.lastSyncAt = new Date();
+    updateData.dataSource = 'betsapi_selective_sync';
+
+    await this.footballMatchesService.update(existingMatch._id.toString(), updateData);
+  }
+
+  // 🆕 새 경기 생성
+  private async createNewMatch(betsApiMatch: any): Promise<void> {
+    const createData = {
+      betsApiId: betsApiMatch.id,
+      sport_id: betsApiMatch.sport_id || '1',
+      time: betsApiMatch.time,
+      time_status: betsApiMatch.time_status,
+      league: betsApiMatch.league,
+      home: betsApiMatch.home,
+      away: betsApiMatch.away,
+      o_home: betsApiMatch.o_home,
+      o_away: betsApiMatch.o_away,
+      ss: betsApiMatch.ss,
+      scores: betsApiMatch.scores,
+      timer: betsApiMatch.timer,
+      stats: betsApiMatch.stats,
+      bet365_id: betsApiMatch.bet365_id,
+      round: betsApiMatch.round,
+      status: 'active',
+      dataSource: 'betsapi_selective_sync',
+      lastSyncAt: new Date(),
+    };
+
+    await this.footballMatchesService.create(createData);
+  }
 
   /**
    * DB에 저장된 데이터만 반환 (DB 우선 방식)
@@ -78,6 +267,7 @@ export class EnhancedBetsApiService {
    * BetsAPI에서 데이터를 가져와 DB에 저장 (자동 동기화)
    */
   async autoSyncMatches(type: MatchType, day?: string): Promise<{ created: number; updated: number }> {
+    // 기존 구현 유지
     try {
       this.logger.log(`BetsAPI에서 ${type} 경기 동기화 시작 - day: ${day}`);
 
@@ -285,13 +475,18 @@ export class EnhancedBetsApiService {
       league: dbMatch.league,
       home: dbMatch.home,
       away: dbMatch.away,
+      o_home: dbMatch.o_home,
+      o_away: dbMatch.o_away,
       ss: dbMatch.ss,
       scores: dbMatch.scores,
       timer: dbMatch.timer,
+      stats: dbMatch.stats,
       bet365_id: dbMatch.bet365_id,
       round: dbMatch.round,
       _id: dbMatch._id.toString(),
       adminNote: dbMatch.adminNote,
     };
   }
+
+  
 }
