@@ -1,39 +1,31 @@
-// src/modules/betsapi/controllers/enhanced-betsapi.controller.ts
+// src/modules/betsapi/controllers/enhanced-betsapi.controller.ts (완전 기능 버전)
 import { Controller, Get, Post, Query, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { EnhancedBetsApiService } from '../services/enhanced-betsapi.service';
+import { FootballMatchesService } from '../../football-matches/services/football-matches.service';
 import { MatchType } from '../types/betsapi.types';
 import { EnhancedMatchResponse } from '../../football-matches/types/football-match.types';
 
-@ApiTags('Enhanced BetsAPI - DB First Football Data Management')
+@ApiTags('Enhanced BetsAPI - Complete Football Data Management')
 @Controller('/api/v1/enhanced-football')
 export class EnhancedBetsApiController {
-  constructor(private readonly enhancedBetsApiService: EnhancedBetsApiService) {}
+  constructor(
+    private readonly enhancedBetsApiService: EnhancedBetsApiService,
+    private readonly footballMatchesService: FootballMatchesService,
+  ) {}
+
+  // ======================
+  // 기본 경기 조회 API
+  // ======================
 
   @Get('matches/upcoming')
   @ApiOperation({
-    summary: 'DB 저장된 예정 경기 조회',
-    description: 'DB에 저장된 예정 축구 경기만 조회합니다. 데이터가 없으면 자동 동기화를 먼저 실행하세요.',
+    summary: 'DB 저장된 예정 경기 조회 (완전한 데이터)',
+    description: 'MongoDB에 저장된 예정 축구 경기를 모든 통계와 함께 조회합니다.',
   })
   @ApiResponse({ 
     status: 200, 
     description: 'DB 저장된 예정 경기 목록이 성공적으로 조회되었습니다.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            results: { type: 'array' },
-            pager: { type: 'object' },
-            enhanced: { type: 'boolean' },
-            stats: { type: 'object' }
-          }
-        },
-        message: { type: 'string' }
-      }
-    }
   })
   @ApiQuery({
     name: 'page',
@@ -61,14 +53,14 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: matches,
-      message: 'DB stored upcoming matches retrieved successfully'
+      message: 'Complete upcoming matches data retrieved from MongoDB'
     };
   }
 
   @Get('matches/inplay')
   @ApiOperation({
-    summary: 'DB 저장된 진행중 경기 조회',
-    description: 'DB에 저장된 진행 중인 축구 경기만 조회합니다.',
+    summary: 'DB 저장된 진행중 경기 조회 (실시간 통계 포함)',
+    description: 'MongoDB에 저장된 진행 중인 축구 경기를 실시간 통계와 함께 조회합니다.',
   })
   @ApiResponse({ 
     status: 200, 
@@ -80,14 +72,14 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: matches,
-      message: 'DB stored inplay matches retrieved successfully'
+      message: 'Complete inplay matches data with live stats retrieved from MongoDB'
     };
   }
 
   @Get('matches/ended')
   @ApiOperation({
-    summary: 'DB 저장된 종료 경기 조회',
-    description: 'DB에 저장된 종료된 축구 경기만 조회합니다.',
+    summary: 'DB 저장된 종료 경기 조회 (최종 통계 포함)',
+    description: 'MongoDB에 저장된 종료된 축구 경기를 최종 통계와 함께 조회합니다.',
   })
   @ApiResponse({ 
     status: 200, 
@@ -119,14 +111,14 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: matches,
-      message: 'DB stored ended matches retrieved successfully'
+      message: 'Complete ended matches data with final stats retrieved from MongoDB'
     };
   }
 
   @Get('match/:eventId')
   @ApiOperation({
-    summary: 'DB 저장된 경기 상세 조회',
-    description: 'DB에 저장된 특정 경기의 상세 정보를 조회합니다.',
+    summary: 'DB 저장된 경기 상세 조회 (모든 통계 포함)',
+    description: 'MongoDB에 저장된 특정 경기의 모든 상세 정보와 통계를 조회합니다.',
   })
   @ApiResponse({ 
     status: 200, 
@@ -143,32 +135,22 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: matchDetails,
-      message: 'DB stored match details retrieved successfully'
+      message: 'Complete match details with all statistics retrieved from MongoDB'
     };
   }
 
+  // ======================
+  // 동기화 API
+  // ======================
+
   @Post('sync/auto/:type')
   @ApiOperation({
-    summary: 'BetsAPI → DB 자동 동기화',
-    description: 'BetsAPI에서 특정 타입의 경기를 가져와 DB에 저장합니다.',
+    summary: 'BetsAPI → MongoDB 완전 동기화',
+    description: 'BetsAPI에서 특정 타입의 경기를 모든 데이터와 함께 가져와 MongoDB에 저장합니다.',
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'BetsAPI → DB 자동 동기화가 성공적으로 완료되었습니다.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            created: { type: 'number' },
-            updated: { type: 'number' }
-          }
-        },
-        message: { type: 'string' }
-      }
-    }
+    description: 'BetsAPI → MongoDB 완전 동기화가 성공적으로 완료되었습니다.',
   })
   @ApiParam({
     name: 'type',
@@ -180,7 +162,7 @@ export class EnhancedBetsApiController {
     name: 'day',
     required: false,
     type: String,
-    description: 'Specific day to sync (YYYYMMDD format). If not provided, syncs current data.',
+    description: 'Specific day to sync (YYYYMMDD format)',
   })
   async autoSync(
     @Param('type') type: MatchType,
@@ -190,122 +172,312 @@ export class EnhancedBetsApiController {
     return {
       success: true,
       data: result,
-      message: `BetsAPI → DB sync completed: ${result.created} created, ${result.updated} updated`
+      message: `Complete BetsAPI → MongoDB sync completed: ${result.created} created, ${result.updated} updated with all stats`
     };
   }
 
   @Post('sync/full')
   @ApiOperation({
-    summary: 'BetsAPI → DB 전체 동기화',
-    description: 'BetsAPI에서 오늘과 내일의 모든 경기를 가져와 DB에 저장합니다.',
+    summary: 'BetsAPI → MongoDB 전체 완전 동기화',
+    description: 'BetsAPI에서 오늘과 내일의 모든 경기를 완전한 데이터로 가져와 MongoDB에 저장합니다.',
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'BetsAPI → DB 전체 동기화가 성공적으로 완료되었습니다.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            upcoming: { type: 'object' },
-            ended: { type: 'object' },
-            total: { type: 'object' }
-          }
-        },
-        message: { type: 'string' }
-      }
-    }
+    description: 'BetsAPI → MongoDB 전체 완전 동기화가 성공적으로 완료되었습니다.',
   })
   async fullSync() {
     const result = await this.enhancedBetsApiService.fullSync();
     return {
       success: true,
       data: result,
-      message: `BetsAPI → DB full sync completed: ${result.total.created} total created, ${result.total.updated} total updated`
+      message: `Complete BetsAPI → MongoDB full sync: ${result.total.created} total created, ${result.total.updated} total updated with all statistics`
     };
   }
 
-  @Get('stats/db')
+  @Post('sync/resync-incomplete')
   @ApiOperation({
-    summary: 'DB 저장된 경기 통계',
-    description: 'DB에 저장된 경기들의 통계를 조회합니다.',
+    summary: '불완전한 데이터 재동기화',
+    description: '통계나 기타 데이터가 누락된 경기들을 재동기화합니다.',
   })
   @ApiResponse({ 
     status: 200, 
-    description: 'DB 경기 통계가 성공적으로 조회되었습니다.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            upcoming: { type: 'number' },
-            inplay: { type: 'number' },
-            ended: { type: 'number' },
-            total: { type: 'number' }
-          }
-        },
-        message: { type: 'string' }
-      }
-    }
+    description: '불완전한 데이터 재동기화가 완료되었습니다.',
+  })
+  async resyncIncomplete() {
+    const result = await this.footballMatchesService.resyncIncompleteMatches();
+    return {
+      success: true,
+      data: result,
+      message: `Incomplete data resync completed: ${result.resynced} resynced, ${result.errors} errors`
+    };
+  }
+
+  // ======================
+  // 통계 및 분석 API
+  // ======================
+
+  @Get('stats/db')
+  @ApiOperation({
+    summary: 'MongoDB 저장된 경기 통계',
+    description: 'MongoDB에 저장된 경기들의 통계를 조회합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'MongoDB 경기 통계가 성공적으로 조회되었습니다.',
   })
   async getDbStats() {
     const stats = await this.enhancedBetsApiService.getDbMatchesCount();
     return {
       success: true,
       data: stats,
-      message: 'DB match statistics retrieved successfully'
+      message: 'MongoDB match statistics retrieved successfully'
     };
   }
+
+  @Get('stats/completeness')
+  @ApiOperation({
+    summary: '데이터 완성도 분석',
+    description: '저장된 경기 데이터의 완성도를 분석합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '데이터 완성도 분석이 성공적으로 완료되었습니다.',
+  })
+  async getDataCompleteness() {
+    const analysis = await this.footballMatchesService.checkDataCompleteness();
+    return {
+      success: true,
+      data: analysis,
+      message: 'Data completeness analysis completed successfully'
+    };
+  }
+
+  @Get('match/:matchId/stats/detailed')
+  @ApiOperation({
+    summary: '경기 상세 통계 분석',
+    description: '특정 경기의 상세 통계를 분석하여 인사이트를 제공합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '경기 상세 통계 분석이 성공적으로 완료되었습니다.',
+  })
+  @ApiParam({
+    name: 'matchId',
+    type: String,
+    description: 'MongoDB Match ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  async getDetailedMatchStats(@Param('matchId') matchId: string) {
+    const analysis = await this.footballMatchesService.getDetailedMatchStats(matchId);
+    return {
+      success: true,
+      data: analysis,
+      message: 'Detailed match statistics analysis completed successfully'
+    };
+  }
+
+  @Get('match/:matchId/quality')
+  @ApiOperation({
+    summary: '경기 품질 평가',
+    description: '경기의 재미도와 품질을 평가합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '경기 품질 평가가 성공적으로 완료되었습니다.',
+  })
+  @ApiParam({
+    name: 'matchId',
+    type: String,
+    description: 'MongoDB Match ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  async assessMatchQuality(@Param('matchId') matchId: string) {
+    const assessment = await this.footballMatchesService.assessMatchQuality(matchId);
+    return {
+      success: true,
+      data: assessment,
+      message: 'Match quality assessment completed successfully'
+    };
+  }
+
+  // ======================
+  // 고급 쿼리 API
+  // ======================
+
+  @Get('matches/high-quality')
+  @ApiOperation({
+    summary: '고품질 경기 조회',
+    description: '통계적으로 재미있고 품질이 높은 경기들을 조회합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '고품질 경기 목록이 성공적으로 조회되었습니다.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    default: 20,
+    description: 'Number of matches to return',
+  })
+  async getHighQualityMatches(@Query('limit') limit: number = 20) {
+    // 고품질 경기 필터링 로직 (예: 많은 골, 높은 xG, 균형잡힌 경기)
+    const matches = await this.footballMatchesService.getAll({ skip: 0, limit: 100 });
+    
+    // 여기서 품질 기준으로 필터링
+    const qualityMatches = matches.results.filter(match => {
+      if (!match.stats) return false;
+      
+      const totalGoals = parseInt(match.stats.goals?.[0] || '0') + parseInt(match.stats.goals?.[1] || '0');
+      const totalShots = parseInt(match.stats.goalattempts?.[0] || '0') + parseInt(match.stats.goalattempts?.[1] || '0');
+      
+      return totalGoals >= 3 || totalShots >= 20; // 3골 이상 또는 20슛 이상
+    }).slice(0, limit);
+
+    return {
+      success: true,
+      data: {
+        results: qualityMatches,
+        criteria: 'Matches with 3+ goals or 20+ shots',
+        count: qualityMatches.length,
+      },
+      message: 'High quality matches retrieved successfully'
+    };
+  }
+
+  @Get('matches/with-stats/:statType')
+  @ApiOperation({
+    summary: '특정 통계가 있는 경기 조회',
+    description: '특정 통계 데이터가 있는 경기들만 조회합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '특정 통계가 있는 경기 목록이 성공적으로 조회되었습니다.',
+  })
+  @ApiParam({
+    name: 'statType',
+    enum: ['xg', 'possession', 'shots', 'cards'],
+    description: 'Type of statistics to filter by',
+    example: 'xg',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    default: 50,
+    description: 'Number of matches to return',
+  })
+  async getMatchesWithStats(
+    @Param('statType') statType: string,
+    @Query('limit') limit: number = 50,
+  ) {
+    const matches = await this.footballMatchesService.getAll({ skip: 0, limit: 200 });
+    
+    const filteredMatches = matches.results.filter(match => {
+      if (!match.stats) return false;
+      
+      switch (statType) {
+        case 'xg':
+          return match.stats.xg && match.stats.xg[0] && match.stats.xg[1];
+        case 'possession':
+          return match.stats.possession_rt && match.stats.possession_rt[0] && match.stats.possession_rt[1];
+        case 'shots':
+          return match.stats.goalattempts && match.stats.goalattempts[0] && match.stats.goalattempts[1];
+        case 'cards':
+          return match.stats.yellowcards || match.stats.redcards;
+        default:
+          return false;
+      }
+    }).slice(0, limit);
+
+    return {
+      success: true,
+      data: {
+        results: filteredMatches,
+        statType,
+        count: filteredMatches.length,
+      },
+      message: `Matches with ${statType} statistics retrieved successfully`
+    };
+  }
+
+  // ======================
+  // 동기화 상태 체크
+  // ======================
 
   @Get('check/sync-needed')
   @ApiOperation({
     summary: '동기화 필요 여부 확인',
-    description: 'DB에 데이터가 있는지 확인하여 동기화가 필요한지 알려줍니다.',
+    description: 'MongoDB에 데이터가 있는지 확인하여 동기화가 필요한지 알려줍니다.',
   })
   @ApiResponse({ 
     status: 200, 
     description: '동기화 필요 여부가 성공적으로 확인되었습니다.',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: {
-          type: 'object',
-          properties: {
-            syncNeeded: { type: 'boolean' },
-            dbStats: { type: 'object' },
-            recommendation: { type: 'string' }
-          }
-        },
-        message: { type: 'string' }
-      }
-    }
   })
   async checkSyncNeeded() {
     const dbStats = await this.enhancedBetsApiService.getDbMatchesCount();
+    const completeness = await this.footballMatchesService.checkDataCompleteness();
+    
     const syncNeeded = dbStats.total === 0;
+    const incompleteData = completeness.completeness_percentage < 80;
     
     let recommendation = '';
     if (syncNeeded) {
-      recommendation = 'DB에 데이터가 없습니다. "전체 동기화"를 실행하여 BetsAPI에서 데이터를 가져오세요.';
+      recommendation = 'MongoDB에 데이터가 없습니다. "전체 동기화"를 실행하여 BetsAPI에서 완전한 데이터를 가져오세요.';
+    } else if (incompleteData) {
+      recommendation = `데이터 완성도가 ${completeness.completeness_percentage}%입니다. "불완전한 데이터 재동기화"를 실행하세요.`;
     } else if (dbStats.upcoming === 0) {
       recommendation = '예정된 경기가 없습니다. "예정 경기 동기화"를 실행하세요.';
     } else {
-      recommendation = 'DB에 충분한 데이터가 있습니다.';
+      recommendation = 'MongoDB에 충분하고 완전한 데이터가 있습니다.';
     }
     
     return {
       success: true,
       data: {
         syncNeeded,
+        incompleteData,
         dbStats,
+        completeness: completeness.completeness_percentage,
         recommendation,
       },
-      message: 'Sync requirement check completed'
+      message: 'Sync requirement and data completeness check completed'
+    };
+  }
+
+  @Get('debug/sample-data')
+  @ApiOperation({
+    summary: '샘플 데이터 확인 (디버깅용)',
+    description: '저장된 데이터의 샘플을 확인하여 스키마와 내용을 검증합니다.',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '샘플 데이터가 성공적으로 조회되었습니다.',
+  })
+  async getSampleData() {
+    const matches = await this.footballMatchesService.getAll({ skip: 0, limit: 3 });
+    
+    const sampleAnalysis = {
+      total_matches: matches.totalCount,
+      sample_count: matches.results.length,
+      samples: matches.results.map(match => ({
+        betsApiId: match.betsApiId,
+        homeTeam: match.home.name,
+        awayTeam: match.away.name,
+        hasStats: !!match.stats,
+        statsFields: match.stats ? Object.keys(match.stats).length : 0,
+        hasXG: !!(match.stats?.xg),
+        hasPossession: !!(match.stats?.possession_rt),
+        hasOTeams: !!(match.o_home || match.o_away),
+        dataSource: match.dataSource,
+        lastSyncAt: match.lastSyncAt,
+      })),
+    };
+
+    return {
+      success: true,
+      data: sampleAnalysis,
+      message: 'Sample data analysis completed for debugging'
     };
   }
 }
