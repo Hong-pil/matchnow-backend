@@ -278,6 +278,10 @@ export class FootballMatch {
   @Prop({ type: String, required: false, default: 'betsapi' })
   dataSource?: string; // 데이터 출처
 
+  @ApiProperty({ example: true })
+  @Prop({ type: Boolean, required: false, default: true })
+  allowSync?: boolean; // 동기화 허용 여부
+
   @ApiProperty({ example: new Date() })
   createdAt: Date;
 

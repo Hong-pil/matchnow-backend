@@ -25,6 +25,15 @@ export interface SelectiveSyncResult {
   }>;
 }
 
+// 🆕 스마트 동기화 결과 인터페이스
+export interface SmartSyncResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  details: string[];
+}
+
 @Injectable()
 export class EnhancedBetsApiService {
   private readonly logger = new Logger(EnhancedBetsApiService.name);
@@ -34,7 +43,208 @@ export class EnhancedBetsApiService {
     private readonly footballMatchesService: FootballMatchesService,
   ) {}
 
-  // 🆕 선택적 동기화 메서드
+  // 🆕 스마트 자동 동기화 메서드 (동기화 허용 토글 고려)
+  async smartAutoSync(type: MatchType, day?: string): Promise<SmartSyncResult> {
+    this.logger.log(`🔄 스마트 동기화 시작 - 타입: ${type}, 날짜: ${day || '오늘'}`);
+    
+    const result: SmartSyncResult = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 0,
+      details: []
+    };
+
+    try {
+      // 1. BetsAPI에서 데이터 가져오기
+      let betsApiResponse;
+      
+      switch (type) {
+        case 'upcoming':
+          betsApiResponse = await this.betsApiService.getUpcomingMatches(1, day);
+          break;
+        case 'inplay':
+          betsApiResponse = await this.betsApiService.getInplayMatches();
+          break;
+        case 'ended':
+          betsApiResponse = await this.betsApiService.getEndedMatches(1, day);
+          break;
+      }
+
+      if (!betsApiResponse || !betsApiResponse.results || betsApiResponse.results.length === 0) {
+        this.logger.log(`BetsAPI에서 ${type} 경기 없음 - 동기화할 데이터 없음`);
+        return result;
+      }
+
+      // 2. 페이징이 있는 경우 모든 페이지 가져오기
+      let allMatches = [...betsApiResponse.results];
+      
+      if (betsApiResponse.pager && betsApiResponse.pager.total > betsApiResponse.pager.per_page) {
+        const totalPages = Math.ceil(betsApiResponse.pager.total / betsApiResponse.pager.per_page);
+        
+        for (let page = 2; page <= Math.min(totalPages, 5); page++) { // 최대 5페이지까지만
+          let pageResponse;
+          
+          switch (type) {
+            case 'upcoming':
+              pageResponse = await this.betsApiService.getUpcomingMatches(page, day);
+              break;
+            case 'ended':
+              pageResponse = await this.betsApiService.getEndedMatches(page, day);
+              break;
+          }
+          
+          if (pageResponse?.results) {
+            allMatches.push(...pageResponse.results);
+          }
+        }
+      }
+
+      this.logger.log(`📊 BetsAPI에서 ${allMatches.length}개 경기 가져옴`);
+
+      // 3. 각 경기에 대해 스마트 동기화 수행
+      for (const betsMatch of allMatches) {
+        try {
+          // 기존 경기 확인
+          const existingMatch = await this.footballMatchesService.getByBetsApiId(betsMatch.id);
+          
+          if (existingMatch) {
+            // 🔧 동기화 허용 여부 확인 (allowSync가 false면 건너뜀)
+            if (existingMatch.allowSync === false) {
+              result.skipped++;
+              result.details.push(`${betsMatch.home?.name} vs ${betsMatch.away?.name} - 동기화 차단됨`);
+              this.logger.debug(`🚫 동기화 차단: ${betsMatch.id} (${betsMatch.home?.name} vs ${betsMatch.away?.name})`);
+              continue;
+            }
+
+            // 동기화 허용된 경기는 업데이트
+            const updateData = this.mapBetsApiToUpdateData(betsMatch);
+            await this.footballMatchesService.update(existingMatch._id.toString(), updateData);
+            result.updated++;
+            this.logger.debug(`✏️ 경기 업데이트: ${betsMatch.home?.name} vs ${betsMatch.away?.name}`);
+          } else {
+            // 새 경기 생성
+            const createData = this.mapBetsApiToCreateData(betsMatch);
+            await this.footballMatchesService.create(createData);
+            result.created++;
+            this.logger.debug(`🆕 경기 생성: ${betsMatch.home?.name} vs ${betsMatch.away?.name}`);
+          }
+        } catch (error) {
+          result.errors++;
+          this.logger.error(`❌ 경기 동기화 실패 (ID: ${betsMatch.id}):`, error.message);
+        }
+      }
+
+      this.logger.log(`✅ 스마트 동기화 완료 - 생성: ${result.created}, 업데이트: ${result.updated}, 건너뜀: ${result.skipped}, 오류: ${result.errors}`);
+      return result;
+
+    } catch (error) {
+      this.logger.error(`❌ 스마트 동기화 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 🆕 스마트 전체 동기화 (오늘 + 내일) - 수정된 버전
+async smartFullSync(): Promise<{
+  upcoming: SmartSyncResult;
+  ended: SmartSyncResult;
+  total: SmartSyncResult;
+}> {
+  try {
+    this.logger.log('🌐 전체 스마트 동기화 시작');
+
+    const today = this.formatDateForAPI(new Date());
+    const tomorrow = this.formatDateForAPI(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+    const [upcomingTodaySync, endedSync, upcomingTomorrowSync] = await Promise.all([
+      this.smartAutoSync('upcoming', today),
+      this.smartAutoSync('ended', today),
+      this.smartAutoSync('upcoming', tomorrow),
+    ]);
+
+    const upcoming: SmartSyncResult = {
+      created: upcomingTodaySync.created + upcomingTomorrowSync.created,
+      updated: upcomingTodaySync.updated + upcomingTomorrowSync.updated,
+      skipped: upcomingTodaySync.skipped + upcomingTomorrowSync.skipped,
+      errors: upcomingTodaySync.errors + upcomingTomorrowSync.errors,
+      details: [
+        ...upcomingTodaySync.details,
+        ...upcomingTomorrowSync.details
+      ]
+    };
+
+    const total: SmartSyncResult = {
+      created: upcoming.created + endedSync.created,
+      updated: upcoming.updated + endedSync.updated,
+      skipped: upcoming.skipped + endedSync.skipped,
+      errors: upcoming.errors + endedSync.errors,
+      details: [
+        ...upcoming.details,
+        ...endedSync.details
+      ]
+    };
+
+    this.logger.log(`✅ 전체 스마트 동기화 완료 - 총 생성: ${total.created}, 총 업데이트: ${total.updated}, 총 건너뜀: ${total.skipped}`);
+
+    return {
+      upcoming,
+      ended: endedSync,
+      total,
+    };
+
+  } catch (error) {
+    this.logger.error('❌ 전체 스마트 동기화 실패:', error);
+    throw error;
+  }
+}
+
+  // BetsAPI 데이터를 업데이트용 데이터로 매핑
+  private mapBetsApiToUpdateData(betsMatch: any): any {
+    return {
+      time: betsMatch.time,
+      time_status: betsMatch.time_status,
+      league: betsMatch.league,
+      home: betsMatch.home,
+      away: betsMatch.away,
+      o_home: betsMatch.o_home,
+      o_away: betsMatch.o_away,
+      ss: betsMatch.ss,
+      scores: betsMatch.scores,
+      timer: betsMatch.timer,
+      stats: betsMatch.stats,
+      bet365_id: betsMatch.bet365_id,
+      round: betsMatch.round,
+      lastSyncAt: new Date(),
+      dataSource: 'betsapi_smart_sync',
+    };
+  }
+
+  // BetsAPI 데이터를 생성용 데이터로 매핑
+  private mapBetsApiToCreateData(betsMatch: any): any {
+    return {
+      betsApiId: betsMatch.id,
+      sport_id: betsMatch.sport_id || '1',
+      time: betsMatch.time,
+      time_status: betsMatch.time_status,
+      league: betsMatch.league,
+      home: betsMatch.home,
+      away: betsMatch.away,
+      o_home: betsMatch.o_home,
+      o_away: betsMatch.o_away,
+      ss: betsMatch.ss,
+      scores: betsMatch.scores,
+      timer: betsMatch.timer,
+      stats: betsMatch.stats,
+      bet365_id: betsMatch.bet365_id,
+      round: betsMatch.round,
+      status: 'active',
+      allowSync: true, // 새로 생성되는 경기는 기본적으로 동기화 허용
+      dataSource: 'betsapi_smart_sync',
+      lastSyncAt: new Date(),
+    };
+  }
+
+  // 🆕 선택적 동기화 메서드 (기존 유지)
   async selectiveSync(eventIds: string[], options: SelectiveSyncOptions = {}): Promise<SelectiveSyncResult> {
     this.logger.log(`🎯 선택적 동기화 시작 - ${eventIds.length}개 경기`);
     this.logger.log(`📋 옵션: ${JSON.stringify(options)}`);
@@ -243,6 +453,7 @@ export class EnhancedBetsApiService {
         results: formattedMatches.map(match => ({
           ...match,
           isModified: true, // DB에 저장된 데이터는 모두 관리 대상
+          allowSync: match.allowSync !== false, // 동기화 허용 상태 포함
           localData: match,
         })),
         pager: type === 'inplay' ? undefined : {
@@ -265,67 +476,15 @@ export class EnhancedBetsApiService {
   }
 
   /**
-   * BetsAPI에서 데이터를 가져와 DB에 저장 (자동 동기화)
+   * BetsAPI에서 데이터를 가져와 DB에 저장 (자동 동기화) - 기존 메서드 (deprecated)
    */
   async autoSyncMatches(type: MatchType, day?: string): Promise<{ created: number; updated: number }> {
-    // 기존 구현 유지
-    try {
-      this.logger.log(`BetsAPI에서 ${type} 경기 동기화 시작 - day: ${day}`);
-
-      let betsApiResponse;
-      
-      switch (type) {
-        case 'upcoming':
-          betsApiResponse = await this.betsApiService.getUpcomingMatches(1, day);
-          break;
-        case 'inplay':
-          betsApiResponse = await this.betsApiService.getInplayMatches();
-          break;
-        case 'ended':
-          betsApiResponse = await this.betsApiService.getEndedMatches(1, day);
-          break;
-      }
-
-      if (!betsApiResponse || !betsApiResponse.results || betsApiResponse.results.length === 0) {
-        this.logger.log(`BetsAPI에서 ${type} 경기 없음 - 동기화할 데이터 없음`);
-        return { created: 0, updated: 0 };
-      }
-
-      // 페이징이 있는 경우 모든 페이지 가져오기
-      let allMatches = [...betsApiResponse.results];
-      
-      if (betsApiResponse.pager && betsApiResponse.pager.total > betsApiResponse.pager.per_page) {
-        const totalPages = Math.ceil(betsApiResponse.pager.total / betsApiResponse.pager.per_page);
-        
-        for (let page = 2; page <= Math.min(totalPages, 5); page++) { // 최대 5페이지까지만
-          let pageResponse;
-          
-          switch (type) {
-            case 'upcoming':
-              pageResponse = await this.betsApiService.getUpcomingMatches(page, day);
-              break;
-            case 'ended':
-              pageResponse = await this.betsApiService.getEndedMatches(page, day);
-              break;
-          }
-          
-          if (pageResponse?.results) {
-            allMatches.push(...pageResponse.results);
-          }
-        }
-      }
-
-      // DB에 저장
-      const syncResult = await this.footballMatchesService.syncFromBetsApi(allMatches);
-      
-      this.logger.log(`${type} 경기 동기화 완료 - 생성: ${syncResult.created}, 업데이트: ${syncResult.updated}`);
-      
-      return syncResult;
-
-    } catch (error) {
-      this.logger.error(`${type} 경기 동기화 실패:`, error);
-      throw error;
-    }
+    // smartAutoSync로 대체되었으므로 이 메서드 호출 시 smartAutoSync 사용
+    const result = await this.smartAutoSync(type, day);
+    return {
+      created: result.created,
+      updated: result.updated,
+    };
   }
 
   /**
@@ -345,6 +504,7 @@ export class EnhancedBetsApiService {
           _id: localMatch._id.toString(),
           adminNote: localMatch.adminNote,
           isModified: true,
+          allowSync: localMatch.allowSync !== false, // 동기화 허용 상태 포함
           localData: localMatch.toObject(),
           lastModified: localMatch.updatedAt,
         };
@@ -363,47 +523,29 @@ export class EnhancedBetsApiService {
   }
 
   /**
-   * 전체 동기화 (오늘, 내일 데이터)
+   * 전체 동기화 (오늘, 내일 데이터) - 기존 메서드 (deprecated)
    */
   async fullSync(): Promise<{
     upcoming: { created: number; updated: number };
     ended: { created: number; updated: number };
     total: { created: number; updated: number };
   }> {
-    try {
-      this.logger.log('전체 동기화 시작');
-
-      const today = this.formatDateForAPI(new Date());
-      const tomorrow = this.formatDateForAPI(new Date(Date.now() + 24 * 60 * 60 * 1000));
-
-      const [upcomingSync, endedSync] = await Promise.all([
-        this.autoSyncMatches('upcoming', today),
-        this.autoSyncMatches('ended', today),
-      ]);
-
-      // 내일 예정 경기도 동기화
-      const tomorrowUpcoming = await this.autoSyncMatches('upcoming', tomorrow);
-
-      const total = {
-        created: upcomingSync.created + endedSync.created + tomorrowUpcoming.created,
-        updated: upcomingSync.updated + endedSync.updated + tomorrowUpcoming.updated,
-      };
-
-      this.logger.log(`전체 동기화 완료 - 총 생성: ${total.created}, 총 업데이트: ${total.updated}`);
-
-      return {
-        upcoming: {
-          created: upcomingSync.created + tomorrowUpcoming.created,
-          updated: upcomingSync.updated + tomorrowUpcoming.updated,
-        },
-        ended: endedSync,
-        total,
-      };
-
-    } catch (error) {
-      this.logger.error('전체 동기화 실패:', error);
-      throw error;
-    }
+    // smartFullSync로 대체
+    const result = await this.smartFullSync();
+    return {
+      upcoming: {
+        created: result.upcoming.created,
+        updated: result.upcoming.updated,
+      },
+      ended: {
+        created: result.ended.created,
+        updated: result.ended.updated,
+      },
+      total: {
+        created: result.total.created,
+        updated: result.total.updated,
+      },
+    };
   }
 
   /**
@@ -486,6 +628,7 @@ export class EnhancedBetsApiService {
       round: dbMatch.round,
       _id: dbMatch._id.toString(),
       adminNote: dbMatch.adminNote,
+      allowSync: dbMatch.allowSync, // 동기화 허용 상태 포함
     };
   }
 }

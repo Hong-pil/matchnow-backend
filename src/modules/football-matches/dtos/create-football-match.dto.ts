@@ -23,6 +23,7 @@ export class CreateFootballMatchDto extends PickType(FootballMatch, [
   'adminNote',
   'lastSyncAt',  // 🆕 추가
   'dataSource',  // 🆕 추가
+  'allowSync',   // 🆕 추가 - 동기화 허용 여부
 ] as const) {}
 
 export class CreateFootballMatchResponse extends generateResponse(CreateFootballMatchDto) {}
