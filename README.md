@@ -128,6 +128,7 @@ pnpm run start:dev
 
 ```bash
 # 빌드 및 프로덕션 실행
+pnpm install
 pnpm run build:ubuntu
 pnpm run start:ubuntu
 
