@@ -79,10 +79,12 @@ cp .env.production .env
 
 ```bash
 # 맥북 개발환경으로 실행
+pnpm install
 pnpm run dev:mac
 
 # 또는 수동으로
 cp .env.development .env
+pnpm install
 pnpm run start:dev
 ```
 
@@ -117,10 +119,12 @@ sudo systemctl start mysql
 
 ```bash
 # Ubuntu Server 환경으로 실행
+pnpm install
 pnpm run dev:ubuntu
 
 # 또는 수동으로
 cp .env.production .env
+pnpm install
 pnpm run start:dev
 ```
 
@@ -194,11 +198,14 @@ pnpm run health:check     # API 헬스체크
 ### 📊 MongoDB 설정
 
 ```bash
-# MongoDB 연결 확인
-mongo 'mongodb://admin:matchnow0618!!!@175.126.95.157:27017/admin'
+# 서버 접속
+ssh -p 22 matchnow@175.126.95.157
 
-# 또는 Ubuntu Server에서
-mongo 'mongodb://admin:matchnow0618!!!@localhost:27017/admin'
+# MongoDB 연결 (Ubuntu Server에서)
+mongo 'mongodb://matchnow_user:matchnow0618!!!@localhost:27017/matchnow_dev'
+
+# 컬렉션 조회
+db.getCollection('football-matches').find().limit(3).pretty()
 ```
 
 ### 🗄️ MySQL 설정

@@ -165,35 +165,66 @@ export class EnhancedBetsApiController {
 
   @Post('sync/auto/:type')
   @ApiOperation({
-    summary: 'BetsAPI → MongoDB 스마트 동기화 (토글 상태 고려)',
-    description: 'BetsAPI에서 특정 타입의 경기를 가져와 MongoDB에 저장하되, 동기화 허용 토글이 꺼진 경기는 건드리지 않습니다.',
+      summary: 'BetsAPI → MongoDB 스마트 동기화 (토글 상태 고려)',
+      description: 'BetsAPI에서 특정 타입의 경기를 가져와 MongoDB에 저장하되, 동기화 허용 토글이 꺼진 경기는 건드리지 않습니다.',
   })
   @ApiResponse({ 
-    status: 200, 
-    description: 'BetsAPI → MongoDB 스마트 동기화가 성공적으로 완료되었습니다.',
+      status: 200, 
+      description: 'BetsAPI → MongoDB 스마트 동기화가 성공적으로 완료되었습니다.',
   })
   @ApiParam({
-    name: 'type',
-    enum: ['upcoming', 'inplay', 'ended'],
-    description: 'Match type to sync from BetsAPI',
-    example: 'upcoming',
+      name: 'type',
+      enum: ['upcoming', 'inplay', 'ended'],
+      description: 'Match type to sync from BetsAPI',
+      example: 'upcoming',
   })
   @ApiQuery({
-    name: 'day',
-    required: false,
-    type: String,
-    description: 'Specific day to sync (YYYYMMDD format)',
+      name: 'day',
+      required: false,
+      type: String,
+      description: 'Specific day to sync (YYYYMMDD format)',
   })
   async autoSync(
-    @Param('type') type: MatchType,
-    @Query('day') day?: string,
+      @Param('type') type: MatchType,
+      @Query('day') day?: string,
+      @Body() body?: any, // 🔧 수정: body 파라미터 추가 (빈 객체 허용)
   ) {
-    const result = await this.enhancedBetsApiService.smartAutoSync(type, day);
-    return {
-      success: true,
-      data: result,
-      message: `스마트 동기화 완료: ${result.created}개 생성, ${result.updated}개 업데이트, ${result.skipped}개 건너뜀 (동기화 차단됨)`
-    };
+      try {
+          console.log(`🔄 스마트 동기화 요청 - Type: ${type}, Day: ${day}`);
+          
+          // 🔧 수정: 입력 검증 강화
+          if (!['upcoming', 'inplay', 'ended'].includes(type)) {
+              return {
+                  success: false,
+                  message: '올바르지 않은 경기 타입입니다.',
+                  error: 'INVALID_MATCH_TYPE'
+              };
+          }
+
+          const result = await this.enhancedBetsApiService.smartAutoSync(type, day);
+          
+          return {
+              success: true,
+              data: result,
+              message: `스마트 동기화 완료: ${result.created}개 생성, ${result.updated}개 업데이트, ${result.skipped}개 건너뜀 (동기화 차단됨)`
+          };
+      } catch (error) {
+          console.error('❌ 동기화 실패:', error);
+          
+          // 🔧 수정: 에러 응답 구조 개선
+          return {
+              success: false,
+              data: {
+                  created: 0,
+                  updated: 0,
+                  skipped: 0,
+                  errors: 1,
+                  details: [error.message]
+              },
+              message: `동기화 실패: ${error.message}`,
+              error: 'SYNC_FAILED'
+          };
+      }
   }
 
   @Post('sync/selective')

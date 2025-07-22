@@ -43,7 +43,7 @@ export class EnhancedBetsApiService {
     private readonly footballMatchesService: FootballMatchesService,
   ) {}
 
-  // 🆕 스마트 자동 동기화 메서드 (동기화 허용 토글 고려)
+  // 🔧 수정: 스마트 자동 동기화 - JSON 파싱 오류 방지
   async smartAutoSync(type: MatchType, day?: string): Promise<SmartSyncResult> {
     this.logger.log(`🔄 스마트 동기화 시작 - 타입: ${type}, 날짜: ${day || '오늘'}`);
     
@@ -56,47 +56,53 @@ export class EnhancedBetsApiService {
     };
 
     try {
-      // 1. BetsAPI에서 데이터 가져오기
+      // 1. BetsAPI에서 데이터 가져오기 - 안전한 호출
       let betsApiResponse;
       
-      switch (type) {
-        case 'upcoming':
-          betsApiResponse = await this.betsApiService.getUpcomingMatches(1, day);
-          break;
-        case 'inplay':
-          betsApiResponse = await this.betsApiService.getInplayMatches();
-          break;
-        case 'ended':
-          betsApiResponse = await this.betsApiService.getEndedMatches(1, day);
-          break;
-      }
+      try {
+        switch (type) {
+          case 'upcoming':
+            betsApiResponse = await this.betsApiService.getUpcomingMatches(1, day);
+            break;
+          case 'inplay':
+            betsApiResponse = await this.betsApiService.getInplayMatches();
+            break;
+          case 'ended':
+            betsApiResponse = await this.betsApiService.getEndedMatches(1, day);
+            break;
+        }
+        
+        // 🔧 응답 검증 강화
+        if (!this.isValidBetsApiResponse(betsApiResponse)) {
+          this.logger.warn(`⚠️ BetsAPI 응답이 유효하지 않음 - 타입: ${type}`);
+          result.details.push('BetsAPI 응답이 null이거나 유효하지 않음');
+          return result;
+        }
 
-      if (!betsApiResponse || !betsApiResponse.results || betsApiResponse.results.length === 0) {
-        this.logger.log(`BetsAPI에서 ${type} 경기 없음 - 동기화할 데이터 없음`);
+      } catch (apiError) {
+        this.logger.error(`❌ BetsAPI 호출 실패 (${type}):`, apiError.message);
+        result.errors++;
+        result.details.push(`BetsAPI 호출 실패: ${apiError.message}`);
         return result;
       }
 
-      // 2. 페이징이 있는 경우 모든 페이지 가져오기
+      // 🔧 결과 검증
+      if (!betsApiResponse.results || betsApiResponse.results.length === 0) {
+        this.logger.log(`📭 BetsAPI에서 ${type} 경기 없음 - 동기화할 데이터 없음`);
+        result.details.push(`${type} 타입의 경기 데이터 없음`);
+        return result;
+      }
+
+      // 2. 페이징이 있는 경우 모든 페이지 가져오기 (안전하게)
       let allMatches = [...betsApiResponse.results];
       
-      if (betsApiResponse.pager && betsApiResponse.pager.total > betsApiResponse.pager.per_page) {
-        const totalPages = Math.ceil(betsApiResponse.pager.total / betsApiResponse.pager.per_page);
-        
-        for (let page = 2; page <= Math.min(totalPages, 5); page++) { // 최대 5페이지까지만
-          let pageResponse;
-          
-          switch (type) {
-            case 'upcoming':
-              pageResponse = await this.betsApiService.getUpcomingMatches(page, day);
-              break;
-            case 'ended':
-              pageResponse = await this.betsApiService.getEndedMatches(page, day);
-              break;
-          }
-          
-          if (pageResponse?.results) {
-            allMatches.push(...pageResponse.results);
-          }
+      if (this.hasPagination(betsApiResponse)) {
+        try {
+          const additionalMatches = await this.fetchAdditionalPages(type, betsApiResponse, day);
+          allMatches.push(...additionalMatches);
+        } catch (paginationError) {
+          this.logger.warn(`⚠️ 추가 페이지 가져오기 실패:`, paginationError.message);
+          // 첫 페이지 데이터는 유지하고 계속 진행
         }
       }
 
@@ -105,6 +111,13 @@ export class EnhancedBetsApiService {
       // 3. 각 경기에 대해 스마트 동기화 수행
       for (const betsMatch of allMatches) {
         try {
+          // 🔧 경기 데이터 검증
+          if (!this.isValidMatchData(betsMatch)) {
+            this.logger.warn(`⚠️ 유효하지 않은 경기 데이터 건너뜀: ${betsMatch?.id}`);
+            result.skipped++;
+            continue;
+          }
+
           // 기존 경기 확인
           const existingMatch = await this.footballMatchesService.getByBetsApiId(betsMatch.id);
           
@@ -112,7 +125,7 @@ export class EnhancedBetsApiService {
             // 🔧 동기화 허용 여부 확인 (allowSync가 false면 건너뜀)
             if (existingMatch.allowSync === false) {
               result.skipped++;
-              result.details.push(`${betsMatch.home?.name} vs ${betsMatch.away?.name} - 동기화 차단됨`);
+              result.details.push(`${betsMatch.home?.name || '팀1'} vs ${betsMatch.away?.name || '팀2'} - 동기화 차단됨`);
               this.logger.debug(`🚫 동기화 차단: ${betsMatch.id} (${betsMatch.home?.name} vs ${betsMatch.away?.name})`);
               continue;
             }
@@ -121,17 +134,21 @@ export class EnhancedBetsApiService {
             const updateData = this.mapBetsApiToUpdateData(betsMatch);
             await this.footballMatchesService.update(existingMatch._id.toString(), updateData);
             result.updated++;
+            result.details.push(`✏️ ${betsMatch.home?.name || '팀1'} vs ${betsMatch.away?.name || '팀2'} - 업데이트 완료`);
             this.logger.debug(`✏️ 경기 업데이트: ${betsMatch.home?.name} vs ${betsMatch.away?.name}`);
           } else {
             // 새 경기 생성
             const createData = this.mapBetsApiToCreateData(betsMatch);
             await this.footballMatchesService.create(createData);
             result.created++;
+            result.details.push(`🆕 ${betsMatch.home?.name || '팀1'} vs ${betsMatch.away?.name || '팀2'} - 생성 완료`);
             this.logger.debug(`🆕 경기 생성: ${betsMatch.home?.name} vs ${betsMatch.away?.name}`);
           }
-        } catch (error) {
+        } catch (matchError) {
           result.errors++;
-          this.logger.error(`❌ 경기 동기화 실패 (ID: ${betsMatch.id}):`, error.message);
+          const errorMsg = `경기 동기화 실패 (ID: ${betsMatch?.id}): ${matchError.message}`;
+          result.details.push(errorMsg);
+          this.logger.error(`❌ ${errorMsg}`);
         }
       }
 
@@ -139,9 +156,81 @@ export class EnhancedBetsApiService {
       return result;
 
     } catch (error) {
-      this.logger.error(`❌ 스마트 동기화 실패:`, error);
+      this.logger.error(`❌ 스마트 동기화 전체 실패:`, error);
+      result.errors++;
+      result.details.push(`전체 동기화 실패: ${error.message}`);
       throw error;
     }
+  }
+
+  // 🔧 새로운 검증 메서드들
+  private isValidBetsApiResponse(response: any): boolean {
+    if (!response) {
+      this.logger.warn('BetsAPI 응답이 null 또는 undefined');
+      return false;
+    }
+    
+    if (typeof response !== 'object') {
+      this.logger.warn('BetsAPI 응답이 객체가 아님');
+      return false;
+    }
+
+    // results가 배열이 아니어도 일단 유효하다고 판단 (빈 결과일 수 있음)
+    return true;
+  }
+
+  private isValidMatchData(match: any): boolean {
+    if (!match || typeof match !== 'object') {
+      return false;
+    }
+
+    // 최소한 id와 home/away 정보가 있어야 함
+    return match.id && (match.home || match.away);
+  }
+
+  private hasPagination(response: any): boolean {
+    return response?.pager && 
+           typeof response.pager === 'object' && 
+           response.pager.total > response.pager.per_page;
+  }
+
+  // 🔧 추가 페이지 가져오기 - 안전한 구현
+  private async fetchAdditionalPages(type: MatchType, initialResponse: any, day?: string): Promise<any[]> {
+    const additionalMatches: any[] = [];
+    
+    if (!this.hasPagination(initialResponse)) {
+      return additionalMatches;
+    }
+
+    const totalPages = Math.ceil(initialResponse.pager.total / initialResponse.pager.per_page);
+    const maxPages = Math.min(totalPages, 5); // 최대 5페이지까지만
+
+    for (let page = 2; page <= maxPages; page++) {
+      try {
+        let pageResponse;
+        
+        switch (type) {
+          case 'upcoming':
+            pageResponse = await this.betsApiService.getUpcomingMatches(page, day);
+            break;
+          case 'ended':
+            pageResponse = await this.betsApiService.getEndedMatches(page, day);
+            break;
+          default:
+            continue; // inplay는 페이징하지 않음
+        }
+        
+        if (this.isValidBetsApiResponse(pageResponse) && pageResponse.results) {
+          additionalMatches.push(...pageResponse.results);
+        }
+      } catch (pageError) {
+        this.logger.warn(`⚠️ 페이지 ${page} 가져오기 실패:`, pageError.message);
+        // 한 페이지 실패해도 계속 진행
+        continue;
+      }
+    }
+
+    return additionalMatches;
   }
 
   // 🆕 스마트 전체 동기화 (오늘 + 내일) - 수정된 버전

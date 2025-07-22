@@ -1,6 +1,6 @@
-// src/main.ts (안전한 패턴으로 수정)
+// src/main.ts (NestJS 방식으로 수정)
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
@@ -9,11 +9,34 @@ import * as path from 'path';
 import * as fs from 'fs';
 import helmet from 'helmet';
 import * as hpp from 'hpp';
+// 🔧 수정: express import 추가
+import * as express from 'express';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // 🔧 수정: JSON 파싱 미들웨어를 먼저 설정 (NestJS 방식)
+  app.use(express.json({ 
+    limit: '10mb',
+    // JSON 파싱 에러를 더 graceful하게 처리
+    verify: (req: any, res: any, buf: Buffer) => {
+      try {
+        if (buf && buf.length) {
+          JSON.parse(buf.toString());
+        }
+      } catch (error) {
+        // JSON 파싱 에러 시 더 명확한 에러 메시지
+        throw new BadRequestException('Invalid JSON format in request body');
+      }
+    }
+  }));
+
+  app.use(express.urlencoded({ 
+    extended: true, 
+    limit: '10mb' 
+  }));
 
   // CORS 설정
   app.enableCors({
@@ -28,6 +51,32 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   });
+
+  // 🔧 수정: ValidationPipe 설정 개선
+  app.useGlobalPipes(new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: false, // 추가 필드 허용
+    disableErrorMessages: false,
+    // JSON 변환 에러를 더 graceful하게 처리
+    exceptionFactory: (errors) => {
+      const message = errors.map(error => 
+        Object.values(error.constraints || {}).join(', ')
+      ).join('; ');
+      return new BadRequestException(`Validation failed: ${message}`);
+    }
+  }));
+
+  // 기본 미들웨어들
+  app.use(cookieParser());
+  app.use(compression());
+
+  if (process.env.NODE_ENV === 'production') {
+    app.use(hpp());
+    app.use(helmet({
+      contentSecurityPolicy: false,
+    }));
+  }
 
   // 프론트엔드 경로 설정
   const frontendPath = path.resolve(process.cwd(), '../matchnow-admin-web/src');
@@ -176,17 +225,6 @@ async function bootstrap() {
       next();
     }
   });
-
-  app.useGlobalPipes(new ValidationPipe());
-  app.use(cookieParser());
-  app.use(compression());
-
-  if (process.env.NODE_ENV === 'production') {
-    app.use(hpp());
-    app.use(helmet({
-      contentSecurityPolicy: false,
-    }));
-  }
 
   const port = process.env.PORT || 4011;
   await app.listen(port, '0.0.0.0');
