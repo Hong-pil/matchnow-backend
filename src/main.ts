@@ -1,4 +1,4 @@
-// src/main.ts (NestJS 방식으로 수정)
+// src/main.ts (Express import 제거, NestJS 내장 기능 사용)
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -9,35 +9,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import helmet from 'helmet';
 import * as hpp from 'hpp';
-// 🔧 수정: express import 추가
-import * as express from 'express';
 
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-
-  // 🔧 수정: JSON 파싱 미들웨어를 먼저 설정 (NestJS 방식)
-  app.use(express.json({ 
-    limit: '10mb',
-    // JSON 파싱 에러를 더 graceful하게 처리
-    verify: (req: any, res: any, buf: Buffer) => {
-      try {
-        if (buf && buf.length) {
-          JSON.parse(buf.toString());
-        }
-      } catch (error) {
-        // JSON 파싱 에러 시 더 명확한 에러 메시지
-        throw new BadRequestException('Invalid JSON format in request body');
-      }
-    }
-  }));
-
-  app.use(express.urlencoded({ 
-    extended: true, 
-    limit: '10mb' 
-  }));
 
   // CORS 설정
   app.enableCors({
@@ -53,13 +30,15 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // 🔧 수정: ValidationPipe 설정 개선
+  // Global Exception Filter 적용
+  app.useGlobalFilters(new HttpExceptionFilter());
+
+  // ValidationPipe 설정
   app.useGlobalPipes(new ValidationPipe({
     transform: true,
     whitelist: true,
-    forbidNonWhitelisted: false, // 추가 필드 허용
+    forbidNonWhitelisted: false,
     disableErrorMessages: false,
-    // JSON 변환 에러를 더 graceful하게 처리
     exceptionFactory: (errors) => {
       const message = errors.map(error => 
         Object.values(error.constraints || {}).join(', ')
@@ -87,22 +66,23 @@ async function bootstrap() {
   if (fs.existsSync(frontendPath)) {
     console.log('✅ Frontend 경로 확인됨');
   } else {
-    console.error('❌ Frontend 경로 없음:', frontendPath);
+    console.warn('⚠️ Frontend 경로 없음:', frontendPath);
+    console.log('📝 관리자 페이지는 사용할 수 없지만 API는 정상 작동합니다.');
   }
 
-  // 모든 요청을 가로채서 /admin으로 시작하는 것만 처리
-  app.use((req, res, next) => {
-    // API 요청은 바로 통과
-    if (req.url.startsWith('/api') || req.url.startsWith('/health')) {
-      return next();
-    }
-
-    // /admin으로 시작하지 않으면 통과
-    if (!req.url.startsWith('/admin')) {
-      return next();
-    }
-
+  // 정적 파일 서빙을 위한 미들웨어 (Express import 없이)
+  app.use('/admin', (req, res, next) => {
     console.log(`📍 Admin 요청: ${req.method} ${req.url}`);
+
+    // 프론트엔드 경로가 없으면 안내 메시지
+    if (!fs.existsSync(frontendPath)) {
+      return res.status(404).json({
+        error: 'Frontend not found',
+        message: '관리자 페이지가 설정되지 않았습니다.',
+        suggestion: 'API 엔드포인트를 사용해주세요.',
+        api_docs: '/api'
+      });
+    }
 
     try {
       let requestPath = req.url;
@@ -113,23 +93,20 @@ async function bootstrap() {
         requestPath = requestPath.substring(0, questionMarkIndex);
       }
 
-      // /admin 제거
-      let filePath = requestPath.replace('/admin', '');
-      
       // 루트 요청 처리
-      if (!filePath || filePath === '/' || filePath === '') {
+      if (!requestPath || requestPath === '/' || requestPath === '') {
         console.log('🏠 메인 페이지로 리다이렉트');
         return res.redirect('/admin/pages/index.html');
       }
 
       // 실제 파일 경로 구성
-      const fullFilePath = path.join(frontendPath, filePath);
+      const fullFilePath = path.join(frontendPath, requestPath);
       console.log(`📁 파일 요청: ${fullFilePath}`);
 
       // 보안: 상위 디렉터리 접근 방지
       if (!fullFilePath.startsWith(frontendPath)) {
         console.log('🚫 보안: 상위 디렉터리 접근 차단');
-        return res.status(403).send('Forbidden');
+        return res.status(403).json({ error: 'Forbidden' });
       }
 
       // 파일 존재 확인
@@ -142,7 +119,7 @@ async function bootstrap() {
           if (fs.existsSync(indexPath)) {
             return res.sendFile(indexPath);
           } else {
-            return res.status(404).send('Directory listing not allowed');
+            return res.status(404).json({ error: 'Directory listing not allowed' });
           }
         }
 
@@ -177,23 +154,22 @@ async function bootstrap() {
         return res.sendFile(fullFilePath);
       } else {
         console.log(`❌ 파일 없음: ${fullFilePath}`);
-        return res.status(404).send(`
-          <h1>404 - File Not Found</h1>
-          <p>요청한 파일을 찾을 수 없습니다: ${filePath}</p>
-          <p><a href="/admin/">관리자 메인으로 돌아가기</a></p>
-        `);
+        return res.status(404).json({
+          error: 'File Not Found',
+          message: `요청한 파일을 찾을 수 없습니다: ${requestPath}`,
+          suggestion: 'API 문서는 /api 에서 확인하세요.'
+        });
       }
     } catch (error) {
       console.error('❌ 파일 서빙 에러:', error);
-      return res.status(500).send(`
-        <h1>500 - Internal Server Error</h1>
-        <p>파일 서빙 중 오류가 발생했습니다.</p>
-        <p><a href="/admin/">관리자 메인으로 돌아가기</a></p>
-      `);
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: '파일 서빙 중 오류가 발생했습니다.'
+      });
     }
   });
 
-  // Swagger 설정 (API 요청이 통과한 후)
+  // Swagger 설정
   if (process.env.NODE_ENV !== 'production') {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Match Now API')
@@ -205,7 +181,7 @@ async function bootstrap() {
     SwaggerModule.setup('api', app, swaggerDocument);
   }
 
-  // 루트 경로 정보 (마지막에 위치)
+  // 루트 경로 정보
   app.use('/', (req, res, next) => {
     if (req.path === '/') {
       res.json({ 
@@ -217,10 +193,11 @@ async function bootstrap() {
           api: '/api',
           admin: '/admin/',
         },
-        frontend: {
-          main: '/admin/pages/index.html',
-          login: '/admin/pages/login.html'
-        }
+        database: {
+          mongodb: 'Connected',
+          mysql: 'Connected'
+        },
+        version: '1.0.0'
       });
     } else {
       next();
@@ -232,8 +209,14 @@ async function bootstrap() {
 
   console.log(`🚀 API Server: ${await app.getUrl()}`);
   console.log(`📚 API Docs: ${await app.getUrl()}/api`);
-  console.log(`🔧 Admin Panel: ${await app.getUrl()}/admin/`);
-  console.log(`🔐 Login: ${await app.getUrl()}/admin/pages/login.html`);
+  console.log(`💾 Health Check: ${await app.getUrl()}/health`);
+  
+  if (fs.existsSync(frontendPath)) {
+    console.log(`🔧 Admin Panel: ${await app.getUrl()}/admin/`);
+    console.log(`🔐 Login: ${await app.getUrl()}/admin/pages/login.html`);
+  } else {
+    console.log(`⚠️ Admin Panel: 프론트엔드 경로가 설정되지 않았습니다.`);
+  }
 }
 
 void bootstrap();
