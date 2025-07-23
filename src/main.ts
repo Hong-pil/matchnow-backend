@@ -170,17 +170,28 @@ async function bootstrap() {
   });
 
   // Swagger 설정
-  if (process.env.NODE_ENV !== 'production') {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Match Now API')
-      .setDescription('Match Now API 문서')
-      .setVersion('1.0')
-      .addBearerAuth()
-      .build();
-    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('api', app, swaggerDocument);
-  }
+  // if (process.env.NODE_ENV !== 'production') {
+  //   const swaggerConfig = new DocumentBuilder()
+  //     .setTitle('Match Now API')
+  //     .setDescription('Match Now API 문서')
+  //     .setVersion('1.0')
+  //     .addBearerAuth()
+  //     .build();
+  //   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  //   SwaggerModule.setup('api', app, swaggerDocument);
+  // }
+  // 수정된 코드 (항상 활성화 또는 조건부 활성화)
+  // 항상 활성화
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Match Now API')
+    .setDescription('Match Now API 문서')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api', app, swaggerDocument);
 
+  
   // 루트 경로 정보
   app.use('/', (req, res, next) => {
     if (req.path === '/') {
