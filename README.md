@@ -36,7 +36,7 @@ $ ssh -p 22 matchnow@175.126.95.157
 PW : 250618
 ```
 
-## 🖥️ 2단계: 맥북에서 개발하기
+## 🖥️ 맥북/서버에서 개발하기
 
 ### 📋 사전 준비사항
 - Ubuntu Server(`175.126.95.157`)에 MongoDB, MySQL이 실행 중이어야 함
@@ -111,62 +111,7 @@ open http://localhost:4011/admin/
 open http://localhost:4011/api
 ```
 
-## 🐧 3단계: Ubuntu Server에서 실행하기
-
-### 📋 사전 준비사항
-
-```bash
-# MongoDB 상태 확인 및 시작
-sudo systemctl status mongod
-sudo systemctl start mongod
-
-# MySQL 상태 확인 및 시작
-sudo systemctl status mysql
-sudo systemctl start mysql
-```
-
-### 🚀 개발 모드 실행
-
-```bash
-# Ubuntu Server 환경으로 실행
-pnpm install
-pnpm run dev:ubuntu
-
-# 또는 수동으로
-cp .env.production .env
-pnpm install
-pnpm run start:dev
-```
-
-### 🌐 프로덕션 모드 실행
-
-```bash
-# 빌드 및 프로덕션 실행
-pnpm install
-pnpm run build:ubuntu
-pnpm run start:ubuntu
-
-# PM2로 프로덕션 배포
-pnpm run deploy:prod
-```
-
-### 📊 PM2 모니터링
-
-```bash
-# PM2 상태 확인
-pm2 status
-
-# 로그 확인
-pm2 logs match-now-api
-
-# 모니터링
-pm2 monit
-
-# 재시작
-pm2 restart match-now-api
-```
-
-## 🔧 4단계: 개발 도구
+## 🔧 개발 도구
 
 ### 📝 사용 가능한 스크립트
 
