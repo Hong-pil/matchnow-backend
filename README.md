@@ -29,22 +29,11 @@ NestJS, MongoDB, MySQL을 사용한 매칭 서비스 백엔드 API입니다.
 | **맥북 개발환경** | `175.126.95.157:27017` | `175.126.95.157:3306` | Ubuntu Server에 원격 접속 |
 | **Ubuntu Server** | `localhost:27017` | `localhost:3306` | 로컬 데이터베이스 사용 |
 
-## 🎯 1단계: 저장소 클론 및 설정
+## 🎯 서버 접속
 
 ```bash
-# 1. 저장소 클론
-git clone git@github.com:Hong-pil/matchnow-server.git
-cd matchnow-server
-
-# 2. 의존성 설치
-pnpm install
-
-# 3. 환경변수 설정 (환경에 맞게 선택)
-# 맥북 개발환경
-cp .env.development .env
-
-# Ubuntu Server 환경
-cp .env.production .env
+$ ssh -p 22 matchnow@175.126.95.157
+PW : 250618
 ```
 
 ## 🖥️ 2단계: 맥북에서 개발하기
@@ -53,25 +42,36 @@ cp .env.production .env
 - Ubuntu Server(`175.126.95.157`)에 MongoDB, MySQL이 실행 중이어야 함
 - 방화벽에서 포트 27017(MongoDB), 3306(MySQL) 개방 필요
 
-### 🚀 개발 서버 실행
+### 🚀 맥북에서 개발할 때 (로컬 개발환경)
 
 ```bash
-# 맥북 개발환경으로 실행
-pnpm install
-pnpm run dev:mac
+$ cd /var/www/html/matchnow-backend
+$ git pull origin main
+$ pnpm install
+$ cp .env.development .env
+$ pnpm run start:dev  # 빌드 생략, 핫 리로드 활용
+$ curl http://localhost:4011/health
+```
 
-# 또는 수동으로
-cp .env.development .env
-pnpm install
-pnpm run start:dev
+### 🚀 서버에서 운영 적용할 때 (프로덕션 배포)
+
+```bash
+$ cd /var/www/html/matchnow-backend 
+$ git pull origin main 
+$ sudo pnpm install 
+$ cp .env.production .env 
+$ sudo pnpm run build 
+$ sudo pnpm run start:prod  # 배포 전 검증
+$ curl http://localhost:4011/health
+$ sudo pm2 stop matchnow-api 2>/dev/null || true  # 기존 PM2 프로세스 중지
+$ sudo pm2 start dist/main.js --name "matchnow-api" --env production  # PM2로 재시작
+$ sudo pm2 status  # 상태 확인
+$ sudo pm2 logs matchnow-api --lines 10  # 로그 확인
 ```
 
 ### 🗄️ MongoDB 접속
 
 ```bash
-# 서버 접속
-$ ssh -p 22 matchnow@175.126.95.157
-PW : 250618
 # MongoDB 상태 확인 및 시작
 $ sudo systemctl status mongod
 $ sudo systemctl start mongod
@@ -87,9 +87,6 @@ $ mongo 'mongodb://matchnow_user:matchnow0618!!!@localhost:27017/matchnow_dev'
 ### 🗄️ MySQL 접속
 
 ```bash
-# 서버 접속
-$ ssh -p 22 matchnow@175.126.95.157
-PW : 250618
 # MySQL 상태 확인 및 시작
 $ sudo systemctl status mysql
 $ sudo systemctl start mysql
