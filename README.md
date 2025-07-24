@@ -33,7 +33,6 @@ NestJS, MongoDB, MySQL을 사용한 매칭 서비스 백엔드 API입니다.
 
 ```bash
 $ ssh -p 22 matchnow@175.126.95.157
-PW : 250618
 ```
 
 ## 🖥️ 맥북/서버에서 개발하기
