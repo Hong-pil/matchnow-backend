@@ -68,7 +68,7 @@ $ sudo pm2 status  # 상태 확인
 $ sudo pm2 logs matchnow-api --lines 10  # 로그 확인
 ```
 
-### 🗄️ MongoDB 접속
+### 🗄️ 서버에서 MongoDB 접속
 
 ```bash
 # MongoDB 상태 확인 및 시작
@@ -83,7 +83,7 @@ $ mongo 'mongodb://matchnow_user:matchnow0618!!!@localhost:27017/matchnow_dev'
 
 ```
 
-### 🗄️ MySQL 접속
+### 🗄️ 서버에서 MySQL 접속
 
 ```bash
 # MySQL 상태 확인 및 시작
@@ -147,30 +147,7 @@ pnpm run health:check     # API 헬스체크
 | `/admin/` | 관리자 메인 페이지 | http://localhost:4011/admin/ |
 | `/admin/login.html` | 관리자 로그인 | http://localhost:4011/admin/login.html |
 
-## 🗃️ 5단계: 데이터베이스 설정
-
-### 📊 MongoDB 설정
-
-```bash
-# 서버 접속
-ssh -p 22 matchnow@175.126.95.157
-
-# MongoDB 연결 (Ubuntu Server에서)
-mongo 'mongodb://matchnow_user:matchnow0618!!!@localhost:27017/matchnow_dev'
-
-# 컬렉션 조회
-db.getCollection('football-matches').find().limit(3).pretty()
-```
-
-### 🗄️ MySQL 설정
-
-```bash
-# MySQL 연결 확인 (맥북에서)
-mysql -h 175.126.95.157 -P 3306 -u matchnow_user -p
-
-# Ubuntu Server에서
-mysql -h localhost -P 3306 -u matchnow_user -p
-```
+## 🗃️ 데이터베이스 설정
 
 ### 📋 데이터베이스 스키마
 
@@ -186,7 +163,7 @@ mysql -h localhost -P 3306 -u matchnow_user -p
 - `admin_users` - 관리자 계정
 - `app_users` - 앱 사용자 계정
 
-## 🔐 6단계: 인증 시스템
+## 🔐 인증 시스템
 
 ### 👨‍💼 관리자 인증
 
@@ -194,8 +171,6 @@ mysql -h localhost -P 3306 -u matchnow_user -p
 # 기본 슈퍼 관리자 계정 (최초 실행 시 자동 생성)
 이메일: admin@matchnow.com
 비밀번호: admin123!@#
-
-# ⚠️ 보안을 위해 로그인 후 즉시 비밀번호 변경 필요
 ```
 
 ### 📱 앱 사용자 인증
@@ -204,7 +179,7 @@ mysql -h localhost -P 3306 -u matchnow_user -p
 - **JWT 토큰**: 7일 만료
 - **자동 회원가입**: 첫 로그인 시 자동 계정 생성
 
-## 🌐 7단계: BetsAPI 연동
+## 🌐 BetsAPI 연동
 
 ### ⚽ 축구 경기 데이터
 
@@ -222,7 +197,7 @@ curl http://localhost:4011/api/v1/football/matches/ended
 curl http://localhost:4011/api/v1/football/leagues
 ```
 
-## 🔧 8단계: 문제 해결
+## 🔧 문제 해결
 
 ### 🚫 일반적인 문제들
 
@@ -235,15 +210,6 @@ lsof -i :3306    # MySQL 포트
 
 # 프로세스 종료
 kill -9 <PID>
-```
-
-**데이터베이스 연결 실패:**
-```bash
-# MongoDB 연결 테스트
-mongo 'mongodb://admin:matchnow0618!!!@175.126.95.157:27017/matchnow_dev?authSource=admin'
-
-# MySQL 연결 테스트
-mysql -h 175.126.95.157 -P 3306 -u matchnow_user -p matchnow_dev
 ```
 
 **방화벽 문제:**
@@ -269,7 +235,7 @@ rm -rf dist
 pnpm run build
 ```
 
-## 📚 9단계: API 문서
+## 📚 API 문서
 
 ### 🔗 Swagger UI
 개발 서버 실행 후 다음 URL에서 API 문서를 확인할 수 있습니다:
@@ -287,7 +253,7 @@ pnpm run build
 - **App Authentication** - 앱 사용자 인증
 - **BetsAPI Football** - 축구 경기 데이터
 
-## 🛡️ 10단계: 보안 설정
+## 🛡️ 보안 설정
 
 ### 🔐 환경변수 보안
 
@@ -311,68 +277,6 @@ sudo ufw allow 22        # SSH
 sudo ufw enable
 ```
 
-## 🚀 11단계: 배포 가이드
-
-### 🔄 지속적 배포
-
-```bash
-# 1. 코드 업데이트
-git pull origin main
-
-# 2. 의존성 업데이트
-pnpm install
-
-# 3. 빌드 및 배포
-pnpm run deploy:prod
-
-# 4. 상태 확인
-pm2 status
-curl http://localhost:4011/health
-```
-
-### 📊 모니터링
-
-```bash
-# PM2 모니터링
-pm2 monit
-
-# 로그 확인
-pm2 logs match-now-api --lines 100
-
-# 시스템 리소스 확인
-htop
-df -h
-```
-
-## 🤝 12단계: 개발 팀 협업
-
-### 📥 새 팀원 온보딩
-
-```bash
-# 1. 저장소 클론 및 설정
-git clone git@github.com:Hong-pil/matchnow-server.git
-cd matchnow-server
-pnpm install
-
-# 2. 환경별 실행
-# 맥북
-pnpm run dev:mac
-
-# Ubuntu Server
-pnpm run dev:ubuntu
-```
-
-### 🔄 개발 워크플로우
-
-1. **브랜치 전략**: `main` → `develop` → `feature/기능명`
-2. **코드 리뷰**: PR 필수, 최소 1명 승인
-3. **환경변수**: `.env` 파일은 커밋하지 않음
-4. **테스트**: 배포 전 필수 테스트 실행
-
-## 📄 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 있습니다.
-
 ## 🆘 지원 및 문의
 
 ### 🐛 버그 리포트
@@ -388,5 +292,3 @@ pnpm run dev:ubuntu
 ---
 
 **🎯 Happy Coding! 즐거운 개발 되세요!**
-
-> 💡 **팁**: 이 README는 살아있는 문서입니다. 프로젝트가 발전함에 따라 지속적으로 업데이트됩니다.
