@@ -29,28 +29,6 @@ NestJS, MongoDB, MySQL을 사용한 매칭 서비스 백엔드 API입니다.
 | **맥북 개발환경** | `175.126.95.157:27017` | `175.126.95.157:3306` | Ubuntu Server에 원격 접속 |
 | **Ubuntu Server** | `localhost:27017` | `localhost:3306` | 로컬 데이터베이스 사용 |
 
-## 📁 프로젝트 구조
-
-```
-matchnow-server/
-├── 📄 .env.development      # 맥북 개발환경용 설정
-├── 📄 .env.production       # Ubuntu Server용 설정
-├── 📄 .env.example          # 환경변수 템플릿
-├── 📄 package.json          # 프로젝트 의존성
-├── 📄 pm2.yml              # PM2 설정
-├── 📁 src/                  # NestJS 소스 코드
-│   ├── 📁 auth/            # 인증 모듈 (JWT, 소셜 로그인)
-│   ├── 📁 modules/         # 비즈니스 로직 모듈
-│   ├── 📁 entities/        # TypeORM 엔티티 (MySQL)
-│   ├── 📁 common/          # 공통 유틸리티
-│   └── 📄 main.ts          # 애플리케이션 진입점
-├── 📁 public/              # 관리자 웹 페이지
-│   ├── 📄 index.html       # 관리자 메인 페이지
-│   ├── 📄 login.html       # 관리자 로그인
-│   └── 📁 js/              # 프론트엔드 스크립트
-└── 📄 README.md
-```
-
 ## 🎯 1단계: 저장소 클론 및 설정
 
 ```bash
@@ -86,6 +64,41 @@ pnpm run dev:mac
 cp .env.development .env
 pnpm install
 pnpm run start:dev
+```
+
+### 🗄️ MongoDB 접속
+
+```bash
+# 서버 접속
+$ ssh -p 22 matchnow@175.126.95.157
+PW : 250618
+# MongoDB 상태 확인 및 시작
+$ sudo systemctl status mongod
+$ sudo systemctl start mongod
+# MongoDB 접속
+$ mongo 'mongodb://matchnow_user:matchnow0618!!!@localhost:27017/matchnow_dev'
+# Collection 조회
+> db.getCollection('football-matches').find().limit(3).pretty()
+# Collection 데이터 모두 삭제
+> db.getCollection('football-matches').deleteMany({});
+
+```
+
+### 🗄️ MySQL 접속
+
+```bash
+# 서버 접속
+$ ssh -p 22 matchnow@175.126.95.157
+PW : 250618
+# MySQL 상태 확인 및 시작
+$ sudo systemctl status mysql
+$ sudo systemctl start mysql
+# MySQL 접속
+$ mysql -h localhost -P 3306 -u matchnow_user -p
+PW : matchNow0618!!!
+# DataBase 사용
+> use matchnow_dev;
+
 ```
 
 ### 🔍 연결 확인
